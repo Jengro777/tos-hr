@@ -1981,15 +1981,15 @@ class _CheckinPageState extends State<CheckinPage> {
                 ),
                 _ConfigLine(
                   label: 'Secret',
-                  value: widget.config.secret.isEmpty ? '未配置' : '已安全加载',
-                  configured: widget.config.secret.isNotEmpty,
+                  value: widget.config.hasCheckinSecret ? '已安全加载' : '未配置',
+                  configured: widget.config.hasCheckinSecret,
                 ),
                 _ConfigLine(
                   label: '通讯录Secret（可选）',
-                  value: widget.config.contactSecret.isEmpty
-                      ? '未配置，使用应用可见范围'
-                      : '已安全加载',
-                  configured: widget.config.contactSecret.isNotEmpty,
+                  value: widget.config.hasContactSecret
+                      ? '已安全加载'
+                      : '未配置，使用应用可见范围',
+                  configured: widget.config.hasContactSecret,
                 ),
                 const SizedBox(height: 12),
                 const Divider(),

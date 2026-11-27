@@ -39,6 +39,16 @@ class WeComApiClient {
     }
     final startedAt = DateTime.now();
     try {
+      if (config.proxyEnabled) {
+        final data = await _proxyRequest('check_connection');
+        _throwForApiError(data, action: '企业微信连接检查');
+        return ConnectionStatus(
+          connected: true,
+          message: '企业微信连接与鉴权正常',
+          checkedAt: checkedAt,
+          latency: DateTime.now().difference(startedAt),
+        );
+      }
       _applicationTokens.invalidate();
       await _applicationTokens.getToken(
         () => _fetchAccessToken(secret: config.secret),
@@ -111,25 +121,33 @@ class WeComApiClient {
     }
 
     try {
-      final data = await _requestWithToken(
-        tokenManager: _applicationTokens,
-        secret: config.secret,
-        sendToken: (token) {
-          final uri = _apiBase.replace(
-            path: '/cgi-bin/checkin/getcheckin_monthdata',
-            queryParameters: {'access_token': token},
-          );
-          return _httpClient.post(
-            uri,
-            headers: const {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode({
-              'starttime': start.millisecondsSinceEpoch ~/ 1000,
-              'endtime': end.millisecondsSinceEpoch ~/ 1000,
-              'useridlist': userIds,
-            }),
-          );
-        },
-      );
+      final data = config.proxyEnabled
+          ? await _proxyRequest('monthly_report', {
+              'start_time': start.millisecondsSinceEpoch ~/ 1000,
+              'end_time': end.millisecondsSinceEpoch ~/ 1000,
+              'user_ids': userIds,
+            })
+          : await _requestWithToken(
+              tokenManager: _applicationTokens,
+              secret: config.secret,
+              sendToken: (token) {
+                final uri = _apiBase.replace(
+                  path: '/cgi-bin/checkin/getcheckin_monthdata',
+                  queryParameters: {'access_token': token},
+                );
+                return _httpClient.post(
+                  uri,
+                  headers: const {
+                    'Content-Type': 'application/json; charset=utf-8',
+                  },
+                  body: jsonEncode({
+                    'starttime': start.millisecondsSinceEpoch ~/ 1000,
+                    'endtime': end.millisecondsSinceEpoch ~/ 1000,
+                    'useridlist': userIds,
+                  }),
+                );
+              },
+            );
       _throwForApiError(data, action: '获取打卡月报');
       final reports = data['datas'];
       if (reports == null) {
@@ -162,6 +180,30 @@ class WeComApiClient {
     }
     if (!config.isConfigured) {
       throw WeComException('配置不完整，缺少：${config.missingCheckinFields.join('、')}');
+    }
+    if (config.proxyEnabled) {
+      final data = await _proxyRequest('member_list', {'limit': limit});
+      _throwForApiError(data, action: '获取成员 ID 列表');
+      final members = data['members'];
+      if (members is! List) {
+        throw const FormatException('Cloudflare API 未返回成员数组');
+      }
+      return members
+          .whereType<Map>()
+          .map(
+            (member) => WeComMember(
+              userId: member['userid']?.toString().trim() ?? '',
+              departmentIds: member['department'] is List
+                  ? (member['department'] as List)
+                        .map((value) => int.tryParse('$value'))
+                        .whereType<int>()
+                        .toList(growable: false)
+                  : const [],
+            ),
+          )
+          .where((member) => member.userId.isNotEmpty)
+          .toList(growable: false)
+        ..sort((a, b) => a.userId.compareTo(b.userId));
     }
     if (config.isContactConfigured) {
       try {
@@ -396,7 +438,54 @@ class WeComApiClient {
     _httpClient.close();
   }
 
+  Future<Map<String, dynamic>> _proxyRequest(
+    String action, [
+    Map<String, Object?> payload = const {},
+  ]) async {
+    final response = await _httpClient
+        .post(
+          Uri.base.resolve('/api/wecom'),
+          headers: const {'Content-Type': 'application/json; charset=utf-8'},
+          body: jsonEncode({'action': action, 'payload': payload}),
+        )
+        .timeout(requestTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      String? message;
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map) {
+          message = decoded['message']?.toString();
+        }
+      } on FormatException {
+        // Fall through to the HTTP status message.
+      }
+      throw WeComException(
+        message ?? 'Cloudflare API 请求失败',
+        httpStatus: response.statusCode,
+      );
+    }
+    final data = _decodeResponse(response);
+    if (data['success'] == false) {
+      throw WeComException(
+        data['message']?.toString() ?? 'Cloudflare API 请求失败',
+      );
+    }
+    return data;
+  }
+
   Future<Map<String, dynamic>> _requestCheckin(String body) async {
+    if (config.proxyEnabled) {
+      final decoded = jsonDecode(body);
+      final payload = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : <String, dynamic>{};
+      return _proxyRequest('checkin', {
+        'data_type': payload['opencheckindatatype'],
+        'start_time': payload['starttime'],
+        'end_time': payload['endtime'],
+        'user_ids': payload['useridlist'],
+      });
+    }
     return _requestWithToken(
       tokenManager: _applicationTokens,
       secret: config.secret,
@@ -419,6 +508,20 @@ class WeComApiClient {
     required Map<String, Object> body,
     required String action,
   }) async {
+    if (config.proxyEnabled) {
+      final proxyAction = switch (path) {
+        '/cgi-bin/user/getuserid' => 'user_by_mobile',
+        '/cgi-bin/user/get_userid_by_email' => 'user_by_email',
+        _ => throw WeComException('不支持的企业微信代理操作：$path'),
+      };
+      final data = await _proxyRequest(proxyAction, {
+        if (body['mobile'] != null) 'mobile': body['mobile'],
+        if (body['email'] != null) 'email': body['email'],
+        if (body['email_type'] != null) 'email_type': body['email_type'],
+      });
+      _throwForApiError(data, action: action);
+      return data;
+    }
     final data = await _requestWithToken(
       tokenManager: _applicationTokens,
       secret: config.secret,

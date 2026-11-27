@@ -11,3 +11,14 @@ database:
   database: 请填写数据库名
   ssl_verify: true
   ssl_ca_file: client-cert.pem
+
+
+
+# WECOM_CORP_ID
+# WECOM_AGENT_ID
+# WECOM_SECRET
+# WECOM_CONTACT_SECRET
+# DB_HOST
+# DB_USERNAME
+# DB_PASSWORD
+# DB_DATABASE

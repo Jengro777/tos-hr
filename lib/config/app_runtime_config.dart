@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:yaml/yaml.dart';
 
 import 'database_config.dart';
+import 'cloudflare_runtime_config.dart';
 import 'local_yaml_source.dart'
     if (dart.library.io) 'local_yaml_source_io.dart'
     as local_source;
@@ -21,6 +22,9 @@ class AppRuntimeConfig {
 }
 
 Future<AppRuntimeConfig> loadAppRuntimeConfig() async {
+  if (kIsWeb) {
+    return loadCloudflareRuntimeConfig();
+  }
   final environment = _environmentConfig();
   if (!kDebugMode) {
     return environment;

@@ -2,6 +2,7 @@ import '../config/database_config.dart';
 import 'attendance_database.dart';
 import 'attendance_summary.dart';
 import 'checkin_record.dart';
+import 'cloudflare_attendance_database.dart';
 import 'connection_status.dart';
 
 class UnsupportedAttendanceDatabase extends AttendanceDatabase {
@@ -110,5 +111,8 @@ class UnsupportedAttendanceDatabase extends AttendanceDatabase {
 }
 
 AttendanceDatabase createAttendanceDatabase(DatabaseConfig? config) {
+  if (config?.proxyEnabled == true) {
+    return CloudflareAttendanceDatabase(config: config!);
+  }
   return UnsupportedAttendanceDatabase();
 }

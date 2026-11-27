@@ -4,6 +4,9 @@ class WecomConfig {
     required this.agentId,
     required this.secret,
     this.contactSecret = '',
+    this.proxyEnabled = false,
+    this.remoteConfigured = false,
+    this.remoteContactConfigured = false,
   });
 
   factory WecomConfig.fromEnvironment() {
@@ -19,19 +22,31 @@ class WecomConfig {
   final String agentId;
   final String secret;
   final String contactSecret;
+  final bool proxyEnabled;
+  final bool remoteConfigured;
+  final bool remoteContactConfigured;
 
   bool get isConfigured =>
-      _isRealValue(corpId) && _isRealValue(agentId) && _isRealValue(secret);
+      _isRealValue(corpId) &&
+      _isRealValue(agentId) &&
+      (proxyEnabled ? remoteConfigured : _isRealValue(secret));
 
   bool get isContactConfigured =>
-      _isRealValue(corpId) && _isRealValue(contactSecret);
+      _isRealValue(corpId) &&
+      (proxyEnabled ? remoteContactConfigured : _isRealValue(contactSecret));
+
+  bool get hasCheckinSecret =>
+      proxyEnabled ? remoteConfigured : _isRealValue(secret);
+
+  bool get hasContactSecret =>
+      proxyEnabled ? remoteContactConfigured : _isRealValue(contactSecret);
 
   List<String> get missingFields {
     return [
       if (!_isRealValue(corpId)) '企业ID',
       if (!_isRealValue(agentId)) 'AgentId',
-      if (!_isRealValue(secret)) 'Secret',
-      if (!_isRealValue(contactSecret)) '通讯录同步Secret',
+      if (!hasCheckinSecret) 'Secret',
+      if (!hasContactSecret) '通讯录同步Secret',
     ];
   }
 
@@ -39,7 +54,7 @@ class WecomConfig {
     return [
       if (!_isRealValue(corpId)) '企业ID',
       if (!_isRealValue(agentId)) 'AgentId',
-      if (!_isRealValue(secret)) 'Secret',
+      if (!hasCheckinSecret) 'Secret',
     ];
   }
 

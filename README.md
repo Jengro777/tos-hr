@@ -135,7 +135,10 @@ AgentId 作为应用配置保存在本地并显示在配置状态中；“获取
 
 成员超过 100 人时自动分批请求。月度表按“月份 + 成员”展示，分年表按“年份 + 成员”展示。全量表默认使用 TiDB 中第一条打卡记录日期到今天，也支持任意日期范围筛选；该视图按日精确统计打卡记录数、出勤日期数、异常次数和异常日期数。所有表都支持成员、规则、部门搜索以及“仅看有异常成员”筛选，底部合计会随筛选结果更新。重复同步同一半月周期时会覆盖对应数据，不会重复累计。
 
-mysql 驱动不支持 Flutter Web 的原始 socket 连接，因此 Web 版本应通过服务端 API 代理 TiDB。`实际出勤天数`按“上班打卡/下班打卡”的唯一日期计算，外出记录不计入。原始打卡数据不包含完整排班日历、职务、工号、应出勤天数和标准工时，因此这些字段不会用推测值填充。
+mysql 驱动不支持 Flutter Web 的原始 socket 连接，因此 Web 版本通过
+Cloudflare Pages Functions 代理企业微信和 TiDB。`实际出勤天数`按“上班打卡/下班打卡”
+的唯一日期计算，外出记录不计入。原始打卡数据不包含完整排班日历、职务、工号、
+应出勤天数和标准工时，因此这些字段不会用推测值填充。
 
 ## 项目结构
 
@@ -145,6 +148,7 @@ lib/
   data/          打卡数据模型和异常类型
   services/      企业微信 token、请求、缓存与错误处理
   screens/       查询表单和结果页面
+functions/       Cloudflare Pages Functions 生产 API
 ```
 
 ## 验证
@@ -176,6 +180,42 @@ Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 只能访问一个账号，工作流会自动读取该账号 ID。配置值格式无效时，工作流也会
 忽略该值并尝试自动读取。
 
+生产环境由同一仓库中的 Cloudflare Pages Functions 读取运行时变量。浏览器请求
+同域 `/api/runtime-config`、`/api/wecom` 和 `/api/db`，不会收到企业微信 Secret
+或数据库密码。部署工作流会同时上传 `build/web` 和 `functions/`。
+
+### Cloudflare Access
+
+数据库 API 必须由 Cloudflare Access 保护。在 Cloudflare Zero Trust 中为
+`tos-hr` 的 Production 环境添加 Access Application，并仅允许公司账号或指定邮箱
+访问整个站点。Pages Functions 在缺少 Access 身份头时默认返回 HTTP 401。
+
+如需临时关闭 Function 自身的身份头检查，只能用于受控测试：
+
+```text
+CLOUDFLARE_ACCESS_REQUIRED=false
+```
+
+不要在公开生产环境中设置该值。
+
+### 生产变量
+
+在 Pages 项目的 `Settings > Variables and Secrets > Production` 中配置：
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| `WECOM_CORP_ID` | 文本 | 企业 ID |
+| `WECOM_AGENT_ID` | 文本 | AgentId；兼容旧名称 `WECOM_AGENT` |
+| `WECOM_SECRET` | 密钥 | 打卡应用 Secret |
+| `WECOM_CONTACT_SECRET` | 密钥 | 通讯录同步 Secret，可选 |
+| `DB_HOST` | 文本 | TiDB Cloud Serverless 主机名，不带协议和端口 |
+| `DB_USERNAME` | 密钥 | TiDB 用户名 |
+| `DB_PASSWORD` | 密钥 | TiDB 密码 |
+| `DB_DATABASE` | 文本 | 数据库名 |
+
+TiDB 代理使用 `@tidbcloud/serverless` 的 HTTP 驱动，不依赖浏览器原始 socket，
+也不使用 `mysql1` 直连。保存变量后需要重新部署，Pages Functions 才会读取新值。
+
 发布新版本的流程：
 
 1. 更新 `pubspec.yaml` 中的 `version`，提交并推送代码。
@@ -187,6 +227,7 @@ Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 
 ## 安全说明
 
-企业微信官方要求 `access_token` 由服务端获取并保存，不应返回给前端。当前实现按客户端直连需求工作，但 Secret 会被编译进应用包，存在被提取的风险，只建议用于内部工具或开发调试。
+企业微信 `access_token` 和数据库密码只由 Cloudflare Pages Functions 使用。
+Flutter Web 不再读取或编译这些密钥。桌面端直连模式仍按原有本地配置工作。
 
-生产环境应在自有服务端代理企业微信接口：Flutter 只调用业务后端，Secret 和 `access_token` 始终留在服务端。若需要部署 Flutter Web，也应通过服务端代理规避浏览器跨域限制。
+生产站点必须启用 Cloudflare Access，否则公共数据库 API 会扩大数据暴露范围。

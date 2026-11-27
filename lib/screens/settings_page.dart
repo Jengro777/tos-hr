@@ -8,11 +8,10 @@ import '../data/connection_status.dart';
 import '../services/sync_api_server.dart';
 import '../theme/tospino_hr_style.dart';
 
-typedef AttendanceSyncCallback =
-    Future<bool> Function(
-      AttendanceSyncMode mode,
-      ValueChanged<String>? onProgress,
-    );
+typedef AttendanceSyncCallback = Future<bool> Function(
+  AttendanceSyncMode mode,
+  ValueChanged<String>? onProgress,
+);
 
 typedef ConnectionCheckCallback = Future<ConnectionStatus> Function();
 
@@ -173,19 +172,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     _ConnectionDetail(
                       label: '打卡 Secret',
-                      value: widget.config.secret.isEmpty ? '未配置' : '已加载',
-                      valueColor: widget.config.secret.isEmpty
-                          ? TospinoHrColors.warning
-                          : TospinoHrColors.success,
+                      value: widget.config.hasCheckinSecret ? '已加载' : '未配置',
+                      valueColor: widget.config.hasCheckinSecret
+                          ? TospinoHrColors.success
+                          : TospinoHrColors.warning,
                     ),
                     _ConnectionDetail(
                       label: '通讯录 Secret',
-                      value: widget.config.contactSecret.isEmpty
-                          ? '未配置（可选）'
-                          : '已加载',
-                      valueColor: widget.config.contactSecret.isEmpty
-                          ? TospinoHrColors.ink3
-                          : TospinoHrColors.success,
+                      value: widget.config.hasContactSecret ? '已加载' : '未配置（可选）',
+                      valueColor: widget.config.hasContactSecret
+                          ? TospinoHrColors.success
+                          : TospinoHrColors.ink3,
                     ),
                   ],
                   status: _wecomStatus,
@@ -349,9 +346,8 @@ class _SettingsPageState extends State<SettingsPage> {
             label: '最近同步',
             value: lastRun == null
                 ? '尚未同步'
-                : DateFormat(
-                    'yyyy-MM-dd HH:mm',
-                  ).format(lastRun.completedAt ?? lastRun.startedAt),
+                : DateFormat('yyyy-MM-dd HH:mm')
+                      .format(lastRun.completedAt ?? lastRun.startedAt),
           ),
           const Divider(height: 21),
           _ConfigRow(
@@ -404,18 +400,18 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(height: 21),
           _ConfigRow(
             label: '打卡 Secret',
-            value: config.secret.isEmpty ? '未配置' : '已加载',
-            valueColor: config.secret.isEmpty
-                ? TospinoHrColors.warning
-                : TospinoHrColors.success,
+            value: config.hasCheckinSecret ? '已加载' : '未配置',
+            valueColor: config.hasCheckinSecret
+                ? TospinoHrColors.success
+                : TospinoHrColors.warning,
           ),
           const Divider(height: 21),
           _ConfigRow(
             label: '通讯录 Secret',
-            value: config.contactSecret.isEmpty ? '未配置（可选）' : '已加载',
-            valueColor: config.contactSecret.isEmpty
-                ? TospinoHrColors.ink3
-                : TospinoHrColors.success,
+            value: config.hasContactSecret ? '已加载' : '未配置（可选）',
+            valueColor: config.hasContactSecret
+                ? TospinoHrColors.success
+                : TospinoHrColors.ink3,
           ),
           const SizedBox(height: 14),
           Container(

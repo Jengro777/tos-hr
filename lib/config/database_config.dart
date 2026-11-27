@@ -8,6 +8,8 @@ class DatabaseConfig {
     this.useSSL = false,
     this.sslCaPem = '',
     this.connectTimeout = const Duration(seconds: 15),
+    this.proxyEnabled = false,
+    this.remoteConfigured = false,
   });
 
   factory DatabaseConfig.fromEnvironment() {
@@ -82,20 +84,25 @@ class DatabaseConfig {
   final bool useSSL;
   final String sslCaPem;
   final Duration connectTimeout;
+  final bool proxyEnabled;
+  final bool remoteConfigured;
 
-  bool get isConfigured =>
-      _isRealValue(host) &&
-      _isRealValue(username) &&
-      password.isNotEmpty &&
-      !password.startsWith('请填写') &&
-      _isRealValue(database);
+  bool get isConfigured => proxyEnabled
+      ? remoteConfigured
+      : _isRealValue(host) &&
+            _isRealValue(username) &&
+            password.isNotEmpty &&
+            !password.startsWith('请填写') &&
+            _isRealValue(database);
 
-  List<String> get missingFields => [
-    if (!_isRealValue(host)) 'DB_HOST',
-    if (!_isRealValue(username)) 'DB_USERNAME',
-    if (password.isEmpty || password.startsWith('请填写')) 'DB_PASSWORD',
-    if (!_isRealValue(database)) 'DB_DATABASE',
-  ];
+  List<String> get missingFields => proxyEnabled
+      ? const []
+      : [
+          if (!_isRealValue(host)) 'DB_HOST',
+          if (!_isRealValue(username)) 'DB_USERNAME',
+          if (password.isEmpty || password.startsWith('请填写')) 'DB_PASSWORD',
+          if (!_isRealValue(database)) 'DB_DATABASE',
+        ];
 
   static bool _isRealValue(String value) {
     final normalized = value.trim();
