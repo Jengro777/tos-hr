@@ -7,7 +7,7 @@ import 'monthly_report.dart';
 export 'attendance_storage.dart';
 
 abstract class AttendanceDatabase {
-  String get storageLabel => 'TiDB';
+  String get storageLabel => '数据库';
 
   String get storageEndpoint => '--';
 
@@ -146,6 +146,6 @@ abstract class AttendanceDatabase {
   Future<void> close() async {}
 
   Future<T> _unsupported<T>() {
-    return Future<T>.error(UnsupportedError('当前运行环境没有可用的 TiDB 数据连接'));
+    return Future<T>.error(UnsupportedError('当前运行环境没有可用的数据库连接'));
   }
 }

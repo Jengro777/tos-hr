@@ -150,7 +150,7 @@ class _SettingsPageState extends State<SettingsPage> {
               final tiles = [
                 _ConnectionTile(
                   icon: Icons.storage_rounded,
-                  title: 'TiDB',
+                  title: '数据库',
                   endpoint: widget.database.storageLabel,
                   details: [
                     _ConnectionDetail(
@@ -177,13 +177,6 @@ class _SettingsPageState extends State<SettingsPage> {
                       valueColor: widget.config.hasCheckinSecret
                           ? TospinoHrColors.success
                           : TospinoHrColors.warning,
-                    ),
-                    _ConnectionDetail(
-                      label: '通讯录 Secret',
-                      value: widget.config.hasContactSecret ? '已加载' : '未配置（可选）',
-                      valueColor: widget.config.hasContactSecret
-                          ? TospinoHrColors.success
-                          : TospinoHrColors.ink3,
                     ),
                   ],
                   status: _wecomStatus,
@@ -279,11 +272,11 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle: '所有成员 · 2018-01 至当前月份',
           ),
           const SizedBox(height: 16),
-          _SyncActionTile(
+          const _SyncGroupLabel('增量同步'),
+          _SyncOptionRow(
             icon: Icons.sync_rounded,
-            title: '增量获取打卡记录',
-            description: '按最新打卡时间补齐缺失的半月周期。',
-            color: TospinoHrColors.brand,
+            title: '打卡记录',
+            description: '补齐缺失的历史打卡周期',
             onTap: widget.config.isConfigured
                 ? () => _runSync(
                     AttendanceSyncMode.incremental,
@@ -291,12 +284,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   )
                 : null,
           ),
-          const SizedBox(height: 10),
-          _SyncActionTile(
+          _SyncOptionRow(
             icon: Icons.description_outlined,
-            title: '增量获取月报',
-            description: '按最新月报周期补齐缺失的自然月。',
-            color: TospinoHrColors.info,
+            title: '月报',
+            description: '补齐缺失的完整自然月月报',
             onTap: widget.config.isConfigured
                 ? () => _runSync(
                     AttendanceSyncMode.incremental,
@@ -304,12 +295,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   )
                 : null,
           ),
-          const SizedBox(height: 10),
-          _SyncActionTile(
+          _SyncOptionRow(
             icon: Icons.sync_alt_rounded,
-            title: '增量同步全部数据',
-            description: '同时补齐打卡记录和月报，任一边落后时取较早周期。',
-            color: TospinoHrColors.success,
+            title: '全部数据',
+            description: '同时补齐打卡记录和月报',
             onTap: widget.config.isConfigured
                 ? () => _runSync(
                     AttendanceSyncMode.incremental,
@@ -317,12 +306,31 @@ class _SettingsPageState extends State<SettingsPage> {
                   )
                 : null,
           ),
-          const SizedBox(height: 10),
-          _SyncActionTile(
+          const Divider(height: 26),
+          const _SyncGroupLabel('全量覆盖'),
+          _SyncOptionRow(
             icon: Icons.warning_amber_rounded,
-            title: '全量覆盖全部数据',
-            description: '重新获取全部历史周期，耗时较长，执行期间不可离开。',
-            color: TospinoHrColors.danger,
+            title: '打卡记录',
+            description: '重新获取全部历史打卡',
+            warning: true,
+            onTap: widget.config.isConfigured
+                ? () => _confirmAndRunFullSync(AttendanceSyncDataset.checkins)
+                : null,
+          ),
+          _SyncOptionRow(
+            icon: Icons.description_outlined,
+            title: '月报',
+            description: '重新获取全部自然月月报',
+            warning: true,
+            onTap: widget.config.isConfigured
+                ? () => _confirmAndRunFullSync(AttendanceSyncDataset.reports)
+                : null,
+          ),
+          _SyncOptionRow(
+            icon: Icons.warning_amber_rounded,
+            title: '全部数据',
+            description: '重新获取全部历史打卡和月报',
+            warning: true,
             onTap: widget.config.isConfigured
                 ? () => _confirmAndRunFullSync(AttendanceSyncDataset.all)
                 : null,
@@ -348,8 +356,8 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           _CardHeading(
             icon: Icons.storage_rounded,
-            title: 'TiDB 数据',
-            subtitle: _loadingStats ? '正在读取 TiDB 状态…' : 'TiDB 持久化存储',
+            title: '数据存储',
+            subtitle: _loadingStats ? '正在读取数据状态…' : '统一持久化存储',
             trailing: IconButton(
               onPressed: _loadingStats ? null : _loadStats,
               tooltip: '刷新状态',
@@ -441,14 +449,6 @@ class _SettingsPageState extends State<SettingsPage> {
             valueColor: config.hasCheckinSecret
                 ? TospinoHrColors.success
                 : TospinoHrColors.warning,
-          ),
-          const Divider(height: 21),
-          _ConfigRow(
-            label: '通讯录 Secret',
-            value: config.hasContactSecret ? '已加载' : '未配置（可选）',
-            valueColor: config.hasContactSecret
-                ? TospinoHrColors.success
-                : TospinoHrColors.ink3,
           ),
           const SizedBox(height: 14),
           Container(
@@ -558,16 +558,16 @@ class _SettingsPageState extends State<SettingsPage> {
         var matches = false;
         return StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
-            title: const Text('确认全量获取'),
+            title: Text('确认全量获取${dataset.label}'),
             content: SizedBox(
               width: 540,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的数据，'
-                    '耗时较长，执行期间不能关闭进度窗口或离开页面。',
+                  Text(
+                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的'
+                    '${dataset.label}，耗时较长，执行期间不能关闭进度窗口或离开页面。',
                     style: TextStyle(height: 1.55),
                   ),
                   const SizedBox(height: 16),
@@ -704,6 +704,93 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+class _SyncGroupLabel extends StatelessWidget {
+  const _SyncGroupLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 7),
+      child: Text(
+        text,
+        style: TospinoHrText.meta.copyWith(
+          fontWeight: FontWeight.w700,
+          color: TospinoHrColors.ink3,
+        ),
+      ),
+    );
+  }
+}
+
+class _SyncOptionRow extends StatelessWidget {
+  const _SyncOptionRow({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+    this.warning = false,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback? onTap;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = warning ? TospinoHrColors.danger : TospinoHrColors.brand;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Material(
+        color: warning
+            ? TospinoHrColors.brandTint.withValues(alpha: 0.65)
+            : TospinoHrColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: color),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: TospinoHrText.meta.copyWith(fontSize: 10.5),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: TospinoHrColors.ink4,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SettingsCard extends StatelessWidget {
   const _SettingsCard({required this.child});
 
@@ -764,68 +851,6 @@ class _CardHeading extends StatelessWidget {
         ),
         ?trailing,
       ],
-    );
-  }
-}
-
-class _SyncActionTile extends StatelessWidget {
-  const _SyncActionTile({
-    required this.icon,
-    required this.title,
-    required this.description,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String description;
-  final Color color;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color.withValues(alpha: 0.06),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: TospinoHrText.cardTitle),
-                    const SizedBox(height: 3),
-                    Text(description, style: TospinoHrText.meta),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: onTap == null
-                    ? TospinoHrColors.line
-                    : TospinoHrColors.ink4,
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

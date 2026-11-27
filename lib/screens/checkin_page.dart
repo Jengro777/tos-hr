@@ -356,7 +356,7 @@ class _CheckinPageState extends State<CheckinPage> {
           _SectionHeading(
             icon: Icons.tune_rounded,
             title: '查询条件',
-            subtitle: isDetails ? '从 TiDB 按日期和成员查询' : '从 TiDB 统计，数据在设置中同步',
+            subtitle: isDetails ? '从数据库按日期和成员查询' : '从数据库统计，数据在设置中同步',
           ),
           const SizedBox(height: 22),
           if (isDetails) ...[
@@ -565,7 +565,7 @@ class _CheckinPageState extends State<CheckinPage> {
             ),
             const SizedBox(height: 9),
             const Text(
-              '成员 UserID 留空时查询 TiDB 中的全部成员。',
+              '成员 UserID 留空时查询数据库中的全部成员。',
               style: TextStyle(color: _muted, fontSize: 12),
             ),
           ],
@@ -607,15 +607,15 @@ class _CheckinPageState extends State<CheckinPage> {
             label: Text(
               _isLoading
                   ? isDetails
-                        ? '正在读取 TiDB 记录…'
-                        : '正在读取 TiDB 数据…'
+                        ? '正在读取记录…'
+                        : '正在读取数据…'
                   : isDetails
-                  ? '查询 TiDB 打卡记录'
+                  ? '查询打卡记录'
                   : _mode == _WorkspaceMode.monthly
                   ? '查看月报'
                   : _mode == _WorkspaceMode.summary
                   ? '查看年报'
-                  : '查看 TiDB 汇总',
+                  : '查看汇总',
             ),
           ),
         ],
@@ -985,12 +985,12 @@ class _CheckinPageState extends State<CheckinPage> {
           _isLoading
               ? '正在读取…'
               : isDetails
-              ? '查询 TiDB 记录'
+              ? '查询记录'
               : _mode == _WorkspaceMode.monthly
               ? '查看月报'
               : _mode == _WorkspaceMode.summary
               ? '查看年报'
-              : '查看 TiDB 汇总',
+              : '查看汇总',
         ),
       ),
     );
@@ -1124,7 +1124,7 @@ class _CheckinPageState extends State<CheckinPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.expand_more_rounded, size: 19),
-                      label: const Text('加载更多 TiDB 记录'),
+                      label: const Text('加载更多记录'),
                     ),
                   ),
                 ],
@@ -1277,7 +1277,7 @@ class _CheckinPageState extends State<CheckinPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    _summaryProgress ?? '正在读取 TiDB 数据…',
+                    _summaryProgress ?? '正在读取数据…',
                     textAlign: TextAlign.center,
                     style: TospinoHrText.meta,
                   ),
@@ -1468,9 +1468,9 @@ class _CheckinPageState extends State<CheckinPage> {
         _totalRecordCount = 0;
         _totalMemberCount = 0;
         _totalExceptionCount = 0;
-        _errorMessage = '读取 TiDB 打卡明细失败：$error';
+        _errorMessage = '读取打卡明细失败：$error';
       });
-      _showOperationPrompt('读取 TiDB 打卡明细失败：$error');
+      _showOperationPrompt('读取打卡明细失败：$error');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -1524,12 +1524,12 @@ class _CheckinPageState extends State<CheckinPage> {
         _isLoading = true;
         _hasSearched = true;
         _errorMessage = null;
-        _summaryProgress = '正在读取 TiDB 数据…';
+        _summaryProgress = '正在读取数据…';
       });
     }
     try {
       if (mounted) {
-        setState(() => _summaryProgress = '正在检测 TiDB 连接…');
+        setState(() => _summaryProgress = '正在检测数据库连接…');
       }
       await _ensureDatabaseConnection();
       if (_mode == _WorkspaceMode.all && _allDateRangeAuto) {
@@ -1563,9 +1563,9 @@ class _CheckinPageState extends State<CheckinPage> {
       }
       setState(() {
         _summaryProgress = null;
-        _errorMessage = '读取 TiDB 考勤数据失败：$error';
+        _errorMessage = '读取考勤数据失败：$error';
       });
-      _showOperationPrompt('读取 TiDB 考勤数据失败：$error');
+      _showOperationPrompt('读取考勤数据失败：$error');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -1605,7 +1605,7 @@ class _CheckinPageState extends State<CheckinPage> {
       if (!wecomStatus.connected) {
         throw WeComException(wecomStatus.message);
       }
-      updateProgress('正在检测 TiDB 连接…');
+      updateProgress('正在检测数据库连接…');
       final databaseStatus = await _database.checkConnection();
       if (!databaseStatus.connected) {
         throw StateError(databaseStatus.message);
@@ -1646,7 +1646,7 @@ class _CheckinPageState extends State<CheckinPage> {
           incrementalStart = null;
           syncStart = DateTime(2018);
           updateProgress(
-            'TiDB 暂无${dataset.includesCheckins && latestCheckinAt == null ? '打卡记录' : '月报'}，'
+            '数据库暂无${dataset.includesCheckins && latestCheckinAt == null ? '打卡记录' : '月报'}，'
             '增量将补齐历史${dataset.label}…',
           );
         }
@@ -1814,81 +1814,13 @@ class _CheckinPageState extends State<CheckinPage> {
         _showOperationPrompt('未找到该成员所选月份的月报数据');
         return;
       }
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text('${row.periodLabel} · ${report.displayName} · 月报详情'),
-          content: SizedBox(
-            width: 1040,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.78,
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _MonthlyReportCard(report: report),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        const Expanded(child: _ReportSubTitle('原始打卡明细')),
-                        Text(
-                          '${records.records.length} 条',
-                          style: TospinoHrText.meta,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    if (records.records.isEmpty)
-                      const Text('该月份没有已同步的原始打卡记录', style: TospinoHrText.meta)
-                    else
-                      _MonthlyPunchTable(records: records.records),
-                    if (report.rawData.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      ExpansionTile(
-                        tilePadding: EdgeInsets.zero,
-                        childrenPadding: const EdgeInsets.only(bottom: 10),
-                        title: const Text(
-                          '查看完整原始月报 JSON',
-                          style: TextStyle(
-                            color: TospinoHrColors.ink2,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: TospinoHrColors.surfaceMuted,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: SelectableText(
-                              const JsonEncoder.withIndent('  ')
-                                  .convert(report.rawData),
-                              style: const TextStyle(
-                                fontFamily: 'monospace',
-                                fontSize: 10,
-                                height: 1.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => _MonthlyReportDetailPage(
+            periodLabel: row.periodLabel,
+            report: report,
+            records: records.records,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
         ),
       );
     } catch (error) {
@@ -2186,13 +2118,6 @@ class _CheckinPageState extends State<CheckinPage> {
                   value: widget.config.hasCheckinSecret ? '已安全加载' : '未配置',
                   configured: widget.config.hasCheckinSecret,
                 ),
-                _ConfigLine(
-                  label: '通讯录Secret（可选）',
-                  value: widget.config.hasContactSecret
-                      ? '已安全加载'
-                      : '未配置，使用应用可见范围',
-                  configured: widget.config.hasContactSecret,
-                ),
                 const SizedBox(height: 12),
                 const Divider(),
                 const SizedBox(height: 8),
@@ -2216,8 +2141,6 @@ class _CheckinPageState extends State<CheckinPage> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: const Text(
-                    '通讯录同步 Secret 是可选配置；企业使用第三方通讯录同步时，'
-                    '应用会自动改用当前自建应用的可见范围。'
                     '凭据会被编译进客户端，只适合内部调试。'
                     '生产环境建议将企业微信请求放到服务端代理。',
                     style: TextStyle(
@@ -2793,6 +2716,90 @@ class _RecordCard extends StatelessWidget {
         record.notes.isNotEmpty ||
         record.locationDetail.isNotEmpty ||
         record.formattedScheduleTime.isNotEmpty;
+  }
+}
+
+class _MonthlyReportDetailPage extends StatelessWidget {
+  const _MonthlyReportDetailPage({
+    required this.periodLabel,
+    required this.report,
+    required this.records,
+  });
+
+  final String periodLabel;
+  final MonthlyReport report;
+  final List<CheckinRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: TospinoHrColors.background,
+      appBar: AppBar(
+        backgroundColor: TospinoHrColors.surface,
+        foregroundColor: TospinoHrColors.ink,
+        title: Text('$periodLabel · ${report.displayName} · 月报详情'),
+        centerTitle: false,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1200),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                _MonthlyReportCard(report: report),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    const Expanded(child: _ReportSubTitle('原始打卡明细')),
+                    Text('${records.length} 条', style: TospinoHrText.meta),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (records.isEmpty)
+                  const Text('该月份没有已同步的原始打卡记录', style: TospinoHrText.meta)
+                else
+                  _MonthlyPunchTable(records: records),
+                if (report.rawData.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(bottom: 10),
+                    title: const Text(
+                      '查看完整原始月报 JSON',
+                      style: TextStyle(
+                        color: TospinoHrColors.ink2,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: TospinoHrColors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: SelectableText(
+                          const JsonEncoder.withIndent('  ')
+                              .convert(report.rawData),
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

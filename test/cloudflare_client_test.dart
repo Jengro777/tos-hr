@@ -164,6 +164,17 @@ void main() {
                   ).millisecondsSinceEpoch,
                   'report_json': jsonEncode(_monthlyReport().toJson()),
                 },
+                {
+                  'user_id': 'PM07',
+                  'year': 2026,
+                  'period_start': DateTime(2026, 11).millisecondsSinceEpoch,
+                  'period_end_exclusive': DateTime(
+                    2026,
+                    11,
+                    16,
+                  ).millisecondsSinceEpoch,
+                  'report_json': jsonEncode(_monthlyReport().toJson()),
+                },
               ]);
             case 'load_raw_month_summary':
               return _json([
@@ -342,25 +353,31 @@ void main() {
       ),
       httpClient: MockClient((request) async {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(body['action'], 'load_monthly_report');
-        return _json({
-          'report_json': jsonEncode({
-            ..._monthlyReport().toJson(),
-            'exception_infos': [
-              {'exception': 1, 'count': 2, 'duration': 120},
-            ],
-            'sp_items': [
-              {
-                'type': 1,
-                'name': '年假',
-                'count': 1,
-                'duration': 3600,
-                'time_type': 1,
-              },
-            ],
-            'overwork_info': {'workday_over_sec': 3600},
-          }),
-        });
+        expect(body['action'], 'load_monthly_report_snapshots');
+        return _json([
+          {
+            'user_id': 'PM07',
+            'year': 2026,
+            'period_start': DateTime(2026, 11).millisecondsSinceEpoch,
+            'period_end_exclusive': DateTime(2026, 12).millisecondsSinceEpoch,
+            'report_json': jsonEncode({
+              ..._monthlyReport().toJson(),
+              'exception_infos': [
+                {'exception': 1, 'count': 2, 'duration': 120},
+              ],
+              'sp_items': [
+                {
+                  'type': 1,
+                  'name': '年假',
+                  'count': 1,
+                  'duration': 3600,
+                  'time_type': 1,
+                },
+              ],
+              'overwork_info': {'workday_over_sec': 3600},
+            }),
+          },
+        ]);
       }),
     );
 

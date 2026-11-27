@@ -10,7 +10,7 @@ class UnsupportedAttendanceDatabase extends AttendanceDatabase {
   Future<ConnectionStatus> checkConnection() async {
     return ConnectionStatus(
       connected: false,
-      message: 'Web 端不支持直连 TiDB，请使用服务端代理',
+      message: 'Web 端不支持直连数据库，请使用服务端代理',
       checkedAt: DateTime.now(),
     );
   }
@@ -102,7 +102,7 @@ class UnsupportedAttendanceDatabase extends AttendanceDatabase {
 
   Future<T> _unsupported<T>() {
     return Future<T>.error(
-      UnsupportedError('Flutter Web 不支持直接连接 TiDB，请使用服务端代理。'),
+      UnsupportedError('Flutter Web 不支持直接连接数据库，请使用服务端代理。'),
     );
   }
 

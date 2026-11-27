@@ -143,6 +143,30 @@ void main() {
     expect(checkinOnly.checkinRecordCount, 1);
     expect(checkinOnly.reportCount, 0);
 
+    final fullCheckins = await service.syncAll(
+      firstMonth: DateTime(2026, 11),
+      lastMonth: DateTime(2026, 11),
+      userIds: const ['PM07'],
+      mode: AttendanceSyncMode.full,
+      dataset: AttendanceSyncDataset.checkins,
+    );
+    expect(checkinCalls, 6);
+    expect(monthlyReportCalls, 3);
+    expect(fullCheckins.checkinRecordCount, 2);
+    expect(fullCheckins.reportCount, 0);
+
+    final fullReports = await service.syncAll(
+      firstMonth: DateTime(2026, 11),
+      lastMonth: DateTime(2026, 11),
+      userIds: const ['PM07'],
+      mode: AttendanceSyncMode.full,
+      dataset: AttendanceSyncDataset.reports,
+    );
+    expect(checkinCalls, 6);
+    expect(monthlyReportCalls, 4);
+    expect(fullReports.checkinRecordCount, 0);
+    expect(fullReports.reportCount, 1);
+
     final monthlyRows = await database.loadMonthlySummary(
       firstMonth: DateTime(2026, 11),
       lastMonth: DateTime(2026, 11),

@@ -124,7 +124,7 @@ class _LoginPageState extends State<LoginPage> {
             width: 420,
             child: Text(
               '统一管理企业微信打卡记录、月度考勤与年度汇总，'
-              '通过 TiDB 统一保存打卡记录与汇总结果。',
+              '统一保存打卡记录与汇总结果。',
               style: TextStyle(
                 color: Color(0xFFB8B7B3),
                 fontSize: 13,
@@ -138,7 +138,7 @@ class _LoginPageState extends State<LoginPage> {
             runSpacing: 10,
             children: const [
               _FeaturePill(icon: Icons.sync_rounded, label: '增量同步'),
-              _FeaturePill(icon: Icons.storage_rounded, label: 'TiDB 统计'),
+              _FeaturePill(icon: Icons.storage_rounded, label: '云端统计'),
               _FeaturePill(icon: Icons.shield_outlined, label: '凭据保护'),
             ],
           ),

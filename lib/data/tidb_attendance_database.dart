@@ -23,7 +23,7 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
   Future<AttendanceOrmStore>? _initialization;
 
   @override
-  String get storageLabel => 'TiDB';
+  String get storageLabel => '数据库';
 
   @override
   String get storageEndpoint =>
@@ -36,14 +36,14 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
       await (await _orm).ping();
       return ConnectionStatus(
         connected: true,
-        message: 'TiDB 连接正常',
+        message: '数据库连接正常',
         checkedAt: startedAt,
         latency: DateTime.now().difference(startedAt),
       );
     } catch (error) {
       return ConnectionStatus(
         connected: false,
-        message: 'TiDB 连接失败：$error',
+        message: '数据库连接失败：$error',
         checkedAt: startedAt,
       );
     }
@@ -356,7 +356,7 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
 
   Future<AttendanceOrmStore> _initializeOrm() async {
     if (!config.isConfigured) {
-      throw StateError('TiDB 配置不完整，缺少：${config.missingFields.join('、')}');
+      throw StateError('数据库配置不完整，缺少：${config.missingFields.join('、')}');
     }
     final securityContext = config.sslCaPem.trim().isEmpty
         ? null

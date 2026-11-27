@@ -475,36 +475,14 @@ class AttendanceOrmStore {
     required int lastYear,
     Set<String> userIds = const {},
   }) async {
-    final query = database
-        .select([
-          tables.monthlyReports.year,
-          tables.monthlyReports.userId,
-          tables.monthlyReports.reportJson,
-        ])
-        .from(tables.monthlyReports)
-        .where(
-          and([
-            _atLeastInt(tables.monthlyReports.year, firstYear),
-            _atMostInt(tables.monthlyReports.year, lastYear),
-            if (userIds.isNotEmpty)
-              inArray(
-                tables.monthlyReports.userId,
-                userIds.toList(growable: false),
-              ),
-          ]),
-        )
-        .orderBy(tables.monthlyReports.year)
-        .orderBy(tables.monthlyReports.userId)
-        .orderBy(tables.monthlyReports.periodStart);
-    final rows = await query;
+    final reports = await loadMonthlyReports(
+      firstMonth: DateTime(firstYear),
+      lastMonth: DateTime(lastYear, 12),
+      userIds: userIds,
+    );
     final builder = AttendanceSummaryBuilder();
-    for (final row in rows) {
-      final report = _monthlyReportFromRow(row);
-      if (report != null) {
-        builder.addReports([
-          report,
-        ], year: row.read(tables.monthlyReports.year) ?? firstYear);
-      }
+    for (final record in reports) {
+      builder.addReports([record.report], year: record.periodStart.year);
     }
     final rawRows = await loadRawYearSummary(
       firstYear: firstYear,
@@ -539,48 +517,18 @@ class AttendanceOrmStore {
     required DateTime lastMonth,
     Set<String> userIds = const {},
   }) async {
-    final rangeStart = DateTime(firstMonth.year, firstMonth.month);
-    final rangeEnd = DateTime(lastMonth.year, lastMonth.month + 1);
-    final query = database
-        .select([
-          tables.monthlyReports.userId,
-          tables.monthlyReports.periodStart,
-          tables.monthlyReports.reportJson,
-        ])
-        .from(tables.monthlyReports)
-        .where(
-          and([
-            _atLeastInt(
-              tables.monthlyReports.periodStart,
-              rangeStart.millisecondsSinceEpoch,
-            ),
-            _lessThanInt(
-              tables.monthlyReports.periodStart,
-              rangeEnd.millisecondsSinceEpoch,
-            ),
-            if (userIds.isNotEmpty)
-              inArray(
-                tables.monthlyReports.userId,
-                userIds.toList(growable: false),
-              ),
-          ]),
-        )
-        .orderBy(tables.monthlyReports.periodStart)
-        .orderBy(tables.monthlyReports.userId);
-    final rows = await query;
+    final reports = await loadMonthlyReports(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
     final builder = AttendanceMonthlySummaryBuilder();
-    for (final row in rows) {
-      final report = _monthlyReportFromRow(row);
-      final periodStart = DateTime.fromMillisecondsSinceEpoch(
-        row.read(tables.monthlyReports.periodStart) ?? 0,
+    for (final record in reports) {
+      builder.addReports(
+        [record.report],
+        year: record.periodStart.year,
+        month: record.periodStart.month,
       );
-      if (report != null) {
-        builder.addReports(
-          [report],
-          year: periodStart.year,
-          month: periodStart.month,
-        );
-      }
     }
     final rawRows = await loadRawMonthlySummary(
       firstMonth: firstMonth,
@@ -614,27 +562,12 @@ class AttendanceOrmStore {
     required String userId,
     required DateTime month,
   }) async {
-    final start = DateTime(month.year, month.month);
-    final end = DateTime(month.year, month.month + 1);
-    final row = await database
-        .select([tables.monthlyReports.reportJson])
-        .from(tables.monthlyReports)
-        .where(
-          and([
-            eq(tables.monthlyReports.userId, userId),
-            _atLeastInt(
-              tables.monthlyReports.periodStart,
-              start.millisecondsSinceEpoch,
-            ),
-            _lessThanInt(
-              tables.monthlyReports.periodStart,
-              end.millisecondsSinceEpoch,
-            ),
-          ]),
-        )
-        .orderBy(tables.monthlyReports.periodStart, Order.desc)
-        .first();
-    return row == null ? null : _monthlyReportFromRow(row);
+    final records = await loadMonthlyReports(
+      firstMonth: month,
+      lastMonth: month,
+      userIds: {userId},
+    );
+    return records.isEmpty ? null : records.first.report;
   }
 
   Future<List<MonthlyReportRecord>> loadMonthlyReports({
@@ -1296,9 +1229,6 @@ Condition _beforeDate(ColumnRef<DateTime> column, DateTime value) =>
 
 Condition _atLeastInt(ColumnRef<int> column, int value) =>
     Condition('${column.toSqlIdentifier()} >= ?', [value]);
-
-Condition _atMostInt(ColumnRef<int> column, int value) =>
-    Condition('${column.toSqlIdentifier()} <= ?', [value]);
 
 Condition _lessThanInt(ColumnRef<int> column, int value) =>
     Condition('${column.toSqlIdentifier()} < ?', [value]);

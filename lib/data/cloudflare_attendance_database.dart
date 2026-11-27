@@ -17,7 +17,7 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   final http.Client _httpClient;
 
   @override
-  String get storageLabel => 'Cloudflare + TiDB';
+  String get storageLabel => '云端数据库';
 
   @override
   String get storageEndpoint =>
@@ -32,14 +32,14 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
       await _post('ping');
       return ConnectionStatus(
         connected: true,
-        message: 'Cloudflare 与 TiDB 连接正常',
+        message: '云端数据库连接正常',
         checkedAt: startedAt,
         latency: DateTime.now().difference(startedAt),
       );
     } catch (error) {
       return ConnectionStatus(
         connected: false,
-        message: 'TiDB 连接失败：$error',
+        message: '数据库连接失败：$error',
         checkedAt: startedAt,
       );
     }
@@ -366,6 +366,12 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
     );
     final builder = AttendanceSummaryBuilder();
     for (final snapshot in reports) {
+      if (!isCompleteMonthlyReportWindow(
+        snapshot.periodStart,
+        snapshot.periodEndExclusive,
+      )) {
+        continue;
+      }
       builder.addReports([snapshot.report], year: snapshot.year);
     }
     final rawRows = await loadRawYearSummary(
@@ -395,6 +401,12 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
     );
     final builder = AttendanceMonthlySummaryBuilder();
     for (final snapshot in reports) {
+      if (!isCompleteMonthlyReportWindow(
+        snapshot.periodStart,
+        snapshot.periodEndExclusive,
+      )) {
+        continue;
+      }
       builder.addReports(
         [snapshot.report],
         year: snapshot.periodStart.year,
@@ -420,23 +432,20 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
     required String userId,
     required DateTime month,
   }) async {
-    final data = await _post('load_monthly_report', {
-      'user_id': userId,
-      'period_start_ms': DateTime(
-        month.year,
-        month.month,
-      ).millisecondsSinceEpoch,
-      'period_end_exclusive_ms': DateTime(
-        month.year,
-        month.month + 1,
-      ).millisecondsSinceEpoch,
-    });
-    final row = _map(data);
-    final rawReport = row['report_json'];
-    final decoded = rawReport is String ? jsonDecode(rawReport) : rawReport;
-    return decoded is Map
-        ? MonthlyReport.fromJson(Map<String, dynamic>.from(decoded))
-        : null;
+    final reports = await _loadMonthlyReportSnapshots(
+      start: DateTime(month.year, month.month),
+      endExclusive: DateTime(month.year, month.month + 1),
+      userIds: {userId},
+    );
+    for (final snapshot in reports) {
+      if (isCompleteMonthlyReportWindow(
+        snapshot.periodStart,
+        snapshot.periodEndExclusive,
+      )) {
+        return snapshot.report;
+      }
+    }
+    return null;
   }
 
   @override

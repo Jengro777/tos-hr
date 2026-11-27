@@ -96,7 +96,7 @@ Future<String> _loadCaPem(
     path: path,
   );
   if (content == null) {
-    throw FormatException('TiDB CA 文件不存在：$path');
+    throw FormatException('数据库 CA 文件不存在：$path');
   }
   return content;
 }
