@@ -171,7 +171,8 @@ Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 
 工作流会自动检查 Pages 项目 `tos-hr`，不存在时创建项目并将生产分支设置为
 `main`；项目已存在时直接使用。未配置 `CLOUDFLARE_ACCOUNT_ID` 时，如果 Token
-只能访问一个账号，工作流会自动读取该账号 ID。
+只能访问一个账号，工作流会自动读取该账号 ID。配置值格式无效时，工作流也会
+忽略该值并尝试自动读取。
 
 发布新版本的流程：
 

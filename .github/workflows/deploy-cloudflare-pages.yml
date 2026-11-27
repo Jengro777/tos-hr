@@ -70,10 +70,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
+          account_id="$(
+            printf "%s" "${CLOUDFLARE_ACCOUNT_ID:-}" |
+              tr -d '[:space:]'
+          )"
           if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
             echo "::error title=Cloudflare API token missing::Configure the CLOUDFLARE_API_TOKEN Actions secret."
             exit 1
+          fi
+
+          if [[ -n "${account_id}" && ! "${account_id}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+            echo "::warning title=Invalid Cloudflare account ID::Ignoring the invalid CLOUDFLARE_ACCOUNT_ID secret and resolving it from the API token."
+            account_id=""
           fi
 
           if [[ -z "${account_id}" ]]; then
@@ -104,7 +112,7 @@ jobs:
           fi
 
           if [[ ! "${account_id}" =~ ^[0-9a-fA-F]{32}$ ]]; then
-            echo "::error title=Invalid Cloudflare account ID::CLOUDFLARE_ACCOUNT_ID must be a 32-character hexadecimal value."
+            echo "::error title=Invalid Cloudflare account ID::The resolved account ID is not a 32-character hexadecimal value."
             exit 1
           fi
 
