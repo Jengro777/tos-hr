@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../auth/auth_service.dart';
+import '../config/app_version.dart';
 import '../theme/tospino_hr_style.dart';
 
 class LoginPage extends StatefulWidget {
@@ -9,11 +10,13 @@ class LoginPage extends StatefulWidget {
     required this.onAuthenticated,
     this.allowDebugSkip = false,
     this.authService = const AuthService(),
+    this.versionInfo = const AppVersionInfo.unknown(),
   });
 
   final VoidCallback onAuthenticated;
   final bool allowDebugSkip;
   final AuthService authService;
+  final AppVersionInfo versionInfo;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -305,16 +308,31 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ],
               const SizedBox(height: 22),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  Icon(
-                    Icons.lock_rounded,
-                    size: 13,
-                    color: TospinoHrColors.ink4,
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lock_rounded,
+                        size: 13,
+                        color: TospinoHrColors.ink4,
+                      ),
+                      SizedBox(width: 5),
+                      Text('密码经摘要校验，不在客户端保存明文', style: TospinoHrText.meta),
+                    ],
                   ),
-                  SizedBox(width: 5),
-                  Text('密码经摘要校验，不在客户端保存明文', style: TospinoHrText.meta),
+                  if (widget.versionInfo.isAvailable)
+                    Text(
+                      widget.versionInfo.displayText,
+                      style: TospinoHrText.meta.copyWith(
+                        color: TospinoHrColors.ink4,
+                      ),
+                    ),
                 ],
               ),
             ],

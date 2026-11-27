@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'config/app_runtime_config.dart';
+import 'config/app_version.dart';
 import 'config/sync_api_config.dart';
 import 'config/wecom_config.dart';
 import 'data/attendance_database.dart';
@@ -13,12 +14,18 @@ import 'theme/tospino_hr_style.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final runtimeConfig = await loadAppRuntimeConfig();
+  final results = await Future.wait([
+    loadAppRuntimeConfig(),
+    AppVersionInfo.load(),
+  ]);
+  final runtimeConfig = results[0] as AppRuntimeConfig;
+  final versionInfo = results[1] as AppVersionInfo;
   runApp(
     WecomCheckinApp(
       config: runtimeConfig.wecom,
       database: createAttendanceDatabase(config: runtimeConfig.database),
       syncApiConfig: runtimeConfig.syncApi,
+      versionInfo: versionInfo,
     ),
   );
 }
@@ -31,6 +38,7 @@ class WecomCheckinApp extends StatefulWidget {
     this.database,
     this.syncApiConfig = const SyncApiConfig(),
     this.initialAuthenticated = false,
+    this.versionInfo = const AppVersionInfo.unknown(),
   });
 
   final WecomConfig config;
@@ -38,6 +46,7 @@ class WecomCheckinApp extends StatefulWidget {
   final AttendanceDatabase? database;
   final SyncApiConfig syncApiConfig;
   final bool initialAuthenticated;
+  final AppVersionInfo versionInfo;
 
   @override
   State<WecomCheckinApp> createState() => _WecomCheckinAppState();
@@ -137,9 +146,11 @@ class _WecomCheckinAppState extends State<WecomCheckinApp> {
               apiClient: widget.apiClient,
               database: widget.database,
               syncApiConfig: widget.syncApiConfig,
+              versionInfo: widget.versionInfo,
             )
           : LoginPage(
               allowDebugSkip: kDebugMode,
+              versionInfo: widget.versionInfo,
               onAuthenticated: () {
                 setState(() => _authenticated = true);
               },

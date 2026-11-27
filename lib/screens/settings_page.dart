@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
+import '../config/app_version.dart';
 import '../config/wecom_config.dart';
 import '../data/attendance_database.dart';
 import '../data/connection_status.dart';
@@ -24,6 +25,7 @@ class SettingsPage extends StatefulWidget {
     required this.onSync,
     required this.onCheckWeCom,
     required this.syncApiServer,
+    this.versionInfo = const AppVersionInfo.unknown(),
   });
 
   final WecomConfig config;
@@ -31,6 +33,7 @@ class SettingsPage extends StatefulWidget {
   final AttendanceSyncCallback onSync;
   final ConnectionCheckCallback onCheckWeCom;
   final SyncApiServer syncApiServer;
+  final AppVersionInfo versionInfo;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -109,13 +112,22 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: const Icon(Icons.arrow_back_rounded),
         ),
         const SizedBox(width: 13),
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('TOSPINO · SETTINGS', style: TospinoHrText.eyebrow),
-              SizedBox(height: 2),
-              Text('设置', style: TospinoHrText.pageTitle),
+              const Text('TOSPINO · SETTINGS', style: TospinoHrText.eyebrow),
+              const SizedBox(height: 2),
+              const Text('设置', style: TospinoHrText.pageTitle),
+              if (widget.versionInfo.isAvailable) ...[
+                const SizedBox(height: 3),
+                Text(
+                  widget.versionInfo.displayText,
+                  style: TospinoHrText.meta.copyWith(
+                    color: TospinoHrColors.ink4,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

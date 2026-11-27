@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../config/app_version.dart';
 import '../config/wecom_config.dart';
 import '../config/sync_api_config.dart';
 import '../data/attendance_database.dart';
@@ -28,12 +29,14 @@ class CheckinPage extends StatefulWidget {
     this.apiClient,
     this.database,
     this.syncApiConfig = const SyncApiConfig(),
+    this.versionInfo = const AppVersionInfo.unknown(),
   });
 
   final WecomConfig config;
   final WeComApiClient? apiClient;
   final AttendanceDatabase? database;
   final SyncApiConfig syncApiConfig;
+  final AppVersionInfo versionInfo;
 
   @override
   State<CheckinPage> createState() => _CheckinPageState();
@@ -273,7 +276,20 @@ class _CheckinPageState extends State<CheckinPage> {
                   style: TospinoHrText.pageTitle.copyWith(fontSize: 22),
                 ),
                 const SizedBox(height: 2),
-                const Text('企业微信考勤数据中心', style: TospinoHrText.meta),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 2,
+                  children: [
+                    const Text('企业微信考勤数据中心', style: TospinoHrText.meta),
+                    if (widget.versionInfo.isAvailable)
+                      Text(
+                        widget.versionInfo.displayText,
+                        style: TospinoHrText.meta.copyWith(
+                          color: TospinoHrColors.ink4,
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ],
@@ -1933,6 +1949,7 @@ class _CheckinPageState extends State<CheckinPage> {
           },
           onCheckWeCom: _apiClient.checkConnection,
           syncApiServer: _syncApiServer,
+          versionInfo: widget.versionInfo,
         ),
       ),
     );

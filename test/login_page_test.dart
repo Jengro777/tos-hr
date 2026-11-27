@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:tospino_hr/config/app_version.dart';
 import 'package:tospino_hr/config/wecom_config.dart';
 import 'package:tospino_hr/main.dart';
 
@@ -15,10 +16,12 @@ void main() {
     await tester.pumpWidget(
       const WecomCheckinApp(
         config: WecomConfig(corpId: '', agentId: '', secret: ''),
+        versionInfo: AppVersionInfo(version: '0.1.14'),
       ),
     );
 
     expect(find.text('欢迎回来'), findsOneWidget);
+    expect(find.text('版本 0.1.14'), findsOneWidget);
     expect(find.text('Debug 跳过登录'), findsOneWidget);
     expect(find.text('企业微信配置尚未完成'), findsNothing);
 
@@ -31,6 +34,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Tospino-HR'), findsOneWidget);
+    expect(find.text('版本 0.1.14'), findsOneWidget);
     expect(find.text('企业微信配置尚未完成'), findsOneWidget);
   });
 
