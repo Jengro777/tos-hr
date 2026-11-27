@@ -159,17 +159,19 @@ flutter test
 GitHub Release 发布后，[`Deploy to Cloudflare Pages`](.github/workflows/deploy-cloudflare-pages.yml)
 工作流会检出对应发布标签，构建 Flutter Web 发布包，并将 `build/web` 部署到
 Cloudflare Pages 项目 `tos-hr`。部署归属 `main` 分支，因此会更新生产站点。
+Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 
 首次使用前需要：
 
 1. 创建具有“Account > Cloudflare Pages > Edit”权限的 Cloudflare API Token。
 2. 在 GitHub 仓库的 `Settings > Secrets and variables > Actions` 中添加：
 
-   - `CLOUDFLARE_API_TOKEN`
-   - `CLOUDFLARE_ACCOUNT_ID`
+   - `CLOUDFLARE_API_TOKEN`（必需）
+   - `CLOUDFLARE_ACCOUNT_ID`（Token 可访问多个账号时必需）
 
 工作流会自动检查 Pages 项目 `tos-hr`，不存在时创建项目并将生产分支设置为
-`main`；项目已存在时直接使用。
+`main`；项目已存在时直接使用。未配置 `CLOUDFLARE_ACCOUNT_ID` 时，如果 Token
+只能访问一个账号，工作流会自动读取该账号 ID。
 
 发布新版本的流程：
 

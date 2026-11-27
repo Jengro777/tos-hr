@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
-    name: Build and deploy tos-hr
+  build-web:
+    name: Build Web
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -38,10 +38,80 @@ jobs:
       - name: Build Flutter web
         run: flutter build web --release
 
-      - name: Ensure Cloudflare Pages project exists
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tos-hr-web
+          path: build/web
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy-cloudflare:
+    name: Deploy Cloudflare
+    needs: build-web
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tos-hr-web
+          path: build/web
+
+      - name: Resolve Cloudflare account ID
+        id: cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          account_id="${CLOUDFLARE_ACCOUNT_ID:-}"
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::error title=Cloudflare API token missing::Configure the CLOUDFLARE_API_TOKEN Actions secret."
+            exit 1
+          fi
+
+          if [[ -z "${account_id}" ]]; then
+            response_file="$(mktemp)"
+            trap 'rm -f "${response_file}"' EXIT
+            status="$(
+              curl --silent --show-error \
+                --output "${response_file}" \
+                --write-out "%{http_code}" \
+                --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                "https://api.cloudflare.com/client/v4/accounts"
+            )"
+
+            if [[ "${status}" != "200" ]]; then
+              echo "::error title=Cloudflare account lookup failed::HTTP ${status}."
+              cat "${response_file}"
+              exit 1
+            fi
+
+            account_count="$(jq '.result | length' "${response_file}")"
+            if [[ "${account_count}" == "1" ]]; then
+              account_id="$(jq -r '.result[0].id' "${response_file}")"
+            else
+              echo "::error title=Cloudflare account ID required::The token can access ${account_count} accounts. Configure the CLOUDFLARE_ACCOUNT_ID Actions secret."
+              jq -r '.result[] | "- \(.name) (\(.id))"' "${response_file}"
+              exit 1
+            fi
+          fi
+
+          if [[ ! "${account_id}" =~ ^[0-9a-fA-F]{32}$ ]]; then
+            echo "::error title=Invalid Cloudflare account ID::CLOUDFLARE_ACCOUNT_ID must be a 32-character hexadecimal value."
+            exit 1
+          fi
+
+          echo "Using Cloudflare account ${account_id}."
+          echo "account-id=${account_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure Cloudflare Pages project exists
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.cloudflare.outputs.account-id }}
         run: |
           set -euo pipefail
 
@@ -80,8 +150,13 @@ jobs:
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy build/web --project-name=tos-hr --branch=main
+          accountId: ${{ steps.cloudflare.outputs.account-id }}
+          command: >-
+            pages deploy build/web
+            --project-name=tos-hr
+            --branch=main
+            --commit-hash=${{ github.sha }}
+            --commit-message=${{ github.event.release.tag_name || github.sha }}
 
       - name: Show deployment URL
         env:
