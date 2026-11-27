@@ -156,8 +156,8 @@ flutter test
 
 ## 发布到 Cloudflare Pages
 
-GitHub Release 发布后，[`Deploy to Cloudflare Pages`](.github/workflows/deploy-cloudflare-pages.yml)
-工作流会检出对应发布标签，构建 Flutter Web 发布包，并将 `build/web` 部署到
+推送到 `main` 或发布 GitHub Release 后，[`Deploy to Cloudflare Pages`](.github/workflows/deploy-cloudflare-pages.yml)
+工作流会检出对应版本代码，构建 Flutter Web 发布包，并将 `build/web` 部署到
 Cloudflare Pages 项目 `tos-hr`。部署归属 `main` 分支，因此会更新生产站点。
 Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 
@@ -176,8 +176,9 @@ Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
 发布新版本的流程：
 
 1. 更新 `pubspec.yaml` 中的 `version`，提交并推送代码。
-2. 在 GitHub 创建对应版本标签和 Release。
-3. 点击 `Publish release` 后，工作流会自动构建并部署。
+2. 推送到 `main` 后，工作流会自动构建并部署。
+
+也可以额外创建 GitHub Release；发布 Release 同样会触发工作流。
 
 也可以在 Actions 页面手动运行 `Deploy to Cloudflare Pages`，用于重新部署当前分支。
 
