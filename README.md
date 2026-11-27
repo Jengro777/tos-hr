@@ -43,7 +43,9 @@ database:
 
 需要恢复模板时，可以复制 `config/app.example.yaml`。
 
-`ssl_ca_file` 相对于 YAML 文件所在目录解析。当前仓库的 `config/client-cert.pem` 会被转换脚本读取并写入临时 `DB_SSL_CA_PEM` 编译参数，Debug 连接 TiDB 时自动用于 TLS 校验。
+`ssl_ca_file` 相对于 YAML 文件所在目录解析。Debug 启动时直接读取
+`config/client-cert.pem` 并用于 TLS 校验，不把整段 PEM 写入 Dart 编译参数，
+避免 Linux 构建把证书内容误判为文件路径。
 
 同步 API 提供两个 GET 接口：
 

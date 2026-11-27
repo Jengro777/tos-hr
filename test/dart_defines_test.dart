@@ -11,8 +11,6 @@ void main() {
     addTearDown(() => directory.delete(recursive: true));
     final input = File('${directory.path}/app.local.yaml');
     final output = File('${directory.path}/defines.json');
-    final caFile = File('${directory.path}/client-cert.pem');
-    await caFile.writeAsString('-----BEGIN CERTIFICATE-----\ntest\n');
     await input.writeAsString('''
 wecom:
   corp_id: ww-test
@@ -36,7 +34,7 @@ database:
     expect(values['DB_HOST'], 'tidb.example.com');
     expect(values['DB_PORT'], '4000');
     expect(values['DB_SSL_VERIFY'], 'true');
-    expect(values['DB_SSL_CA_PEM'], '-----BEGIN CERTIFICATE-----\ntest\n');
+    expect(values.keys, isNot(contains('DB_SSL_CA_PEM')));
     expect(values.keys, isNot(contains('SYNC_API_ENABLED')));
     expect(values.keys, isNot(contains('SYNC_API_TOKEN')));
   });

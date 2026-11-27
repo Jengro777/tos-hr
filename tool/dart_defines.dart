@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path/path.dart' as path;
 import 'package:yaml/yaml.dart';
 
 Future<void> main(List<String> arguments) async {
@@ -30,10 +29,6 @@ Future<void> convertYamlConfig({
   }
   final wecom = _map(document['wecom'], 'wecom');
   final database = _map(document['database'], 'database');
-  final sslCaPem = await _readSslCa(
-    configDirectory: input.parent,
-    database: database,
-  );
   final values = <String, Object>{
     'WECOM_CORP_ID': _required(wecom, 'corp_id', 'wecom.corp_id'),
     'WECOM_AGENT_ID': _required(wecom, 'agent_id', 'wecom.agent_id'),
@@ -49,30 +44,12 @@ Future<void> convertYamlConfig({
       'ssl_verify',
       'database.ssl_verify',
     ).toString(),
-    'DB_SSL_CA_PEM': sslCaPem,
   };
   await output.parent.create(recursive: true);
   await output.writeAsString(
     const JsonEncoder.withIndent('  ').convert(values),
     flush: true,
   );
-}
-
-Future<String> _readSslCa({
-  required Directory configDirectory,
-  required Map database,
-}) async {
-  final configuredPath = database['ssl_ca_file']?.toString().trim() ?? '';
-  if (configuredPath.isEmpty) {
-    return '';
-  }
-  final file = path.isAbsolute(configuredPath)
-      ? File(configuredPath)
-      : File(path.join(configDirectory.path, configuredPath));
-  if (!await file.exists()) {
-    throw FormatException('SSL CA 文件不存在：${file.path}');
-  }
-  return file.readAsString();
 }
 
 Map _map(Object? value, String path) {
