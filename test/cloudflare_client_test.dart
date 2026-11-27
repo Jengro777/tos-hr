@@ -5,8 +5,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:tospino_hr/config/database_config.dart';
 import 'package:tospino_hr/config/wecom_config.dart';
+import 'package:tospino_hr/data/attendance_summary.dart';
 import 'package:tospino_hr/data/checkin_record.dart';
 import 'package:tospino_hr/data/cloudflare_attendance_database.dart';
+import 'package:tospino_hr/data/monthly_report.dart';
 import 'package:tospino_hr/services/wecom_api_client.dart';
 
 void main() {
@@ -126,6 +128,191 @@ void main() {
     expect(page.records.single.userId, 'zhangsan');
     expect(saved, 1);
     expect(actions, ['load_stats', 'load_checkin_page', 'save_checkins']);
+  });
+
+  test(
+    'loads monthly report summaries and merges real attendance days',
+    () async {
+      final actions = <String>[];
+      Map<String, dynamic>? monthlyPayload;
+      final database = CloudflareAttendanceDatabase(
+        config: const DatabaseConfig(
+          host: 'gateway.example.com',
+          port: 4000,
+          username: '',
+          password: '',
+          database: 'tospino_hr',
+          proxyEnabled: true,
+          remoteConfigured: true,
+        ),
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          actions.add('${body['action']}');
+          switch (body['action']) {
+            case 'replace_monthly_reports':
+              monthlyPayload = body['payload'] as Map<String, dynamic>;
+              return _json({'count': 1});
+            case 'load_monthly_report_snapshots':
+              return _json([
+                {
+                  'user_id': 'PM07',
+                  'year': 2026,
+                  'period_start': DateTime(2026, 11).millisecondsSinceEpoch,
+                  'period_end_exclusive': DateTime(
+                    2026,
+                    12,
+                  ).millisecondsSinceEpoch,
+                  'report_json': jsonEncode(_monthlyReport().toJson()),
+                },
+              ]);
+            case 'load_raw_month_summary':
+              return _json([
+                {
+                  'year': 2026,
+                  'month': 11,
+                  'period_label': null,
+                  'name': 'PM07',
+                  'user_id': 'PM07',
+                  'rule_names': 'Tospino打卡',
+                  'departments': '--',
+                  'source_record_count': 0,
+                  'metrics': {
+                    'checkinRecordCount': 40,
+                    'attendanceDays': 18,
+                    'expectedDays': 20,
+                    'normalAttendanceDays': 18,
+                    'regularDays': 18,
+                    'exceptionDays': 2,
+                    'exceptionCount': 3,
+                    'regularWorkHours': 144,
+                    'standardWorkHours': 160,
+                  },
+                },
+              ]);
+            case 'load_raw_year_summary':
+              return _json([
+                {
+                  'year': 2026,
+                  'month': null,
+                  'period_label': null,
+                  'name': 'PM07',
+                  'user_id': 'PM07',
+                  'rule_names': 'Tospino打卡',
+                  'departments': '--',
+                  'source_record_count': 0,
+                  'metrics': {
+                    'checkinRecordCount': 40,
+                    'attendanceDays': 18,
+                    'expectedDays': 20,
+                    'normalAttendanceDays': 18,
+                    'regularDays': 18,
+                    'exceptionDays': 2,
+                    'exceptionCount': 3,
+                    'regularWorkHours': 144,
+                    'standardWorkHours': 160,
+                  },
+                },
+              ]);
+            case 'load_raw_all_summary':
+              return _json([
+                {
+                  'year': 2026,
+                  'month': null,
+                  'period_label': '2026-11-01~2026-11-30',
+                  'name': 'PM07',
+                  'user_id': 'PM07',
+                  'rule_names': 'Tospino打卡',
+                  'departments': '--',
+                  'source_record_count': 0,
+                  'metrics': {
+                    'checkinRecordCount': 40,
+                    'attendanceDays': 18,
+                    'expectedDays': 20,
+                    'normalAttendanceDays': 18,
+                    'regularDays': 18,
+                    'exceptionDays': 2,
+                    'exceptionCount': 3,
+                    'regularWorkHours': 144,
+                    'standardWorkHours': 160,
+                  },
+                },
+              ]);
+            default:
+              return _json({});
+          }
+        }),
+      );
+
+      final saved = await database.replaceMonthlyReports(
+        [_monthlyReport()],
+        year: 2026,
+        periodStart: DateTime(2026, 11),
+        periodEndExclusive: DateTime(2026, 12),
+        userIds: const {'PM07'},
+      );
+      final rows = await database.loadMonthlySummary(
+        firstMonth: DateTime(2026, 11),
+        lastMonth: DateTime(2026, 11),
+        userIds: const {'PM07'},
+      );
+      final yearlyRows = await database.loadSummary(
+        firstYear: 2026,
+        lastYear: 2026,
+        userIds: const {'PM07'},
+      );
+      final historyRows = await database.loadRawAllTimeSummary(
+        startDate: DateTime(2026, 11),
+        endDate: DateTime(2026, 11, 30),
+        userIds: const {'PM07'},
+      );
+
+      expect(saved, 1);
+      expect(monthlyPayload?['user_ids'], ['PM07']);
+      expect(rows.single.valueOf(AttendanceMetric.expectedDays), 20);
+      expect(rows.single.valueOf(AttendanceMetric.normalAttendanceDays), 19);
+      expect(rows.single.valueOf(AttendanceMetric.attendanceDays), 18);
+      expect(rows.single.valueOf(AttendanceMetric.checkinRecordCount), 40);
+      expect(yearlyRows.single.valueOf(AttendanceMetric.expectedDays), 20);
+      expect(historyRows.single.valueOf(AttendanceMetric.expectedDays), 20);
+      expect(historyRows.single.valueOf(AttendanceMetric.attendanceDays), 18);
+      expect(
+        historyRows.single.valueOf(AttendanceMetric.regularWorkHours),
+        144,
+      );
+      expect(
+        historyRows.single.valueOf(AttendanceMetric.standardWorkHours),
+        160,
+      );
+      expect(actions, [
+        'replace_monthly_reports',
+        'load_monthly_report_snapshots',
+        'load_raw_month_summary',
+        'load_monthly_report_snapshots',
+        'load_raw_year_summary',
+        'load_raw_all_summary',
+      ]);
+    },
+  );
+}
+
+MonthlyReport _monthlyReport() {
+  return MonthlyReport.fromJson({
+    'base_info': {
+      'name': '吴振国',
+      'acctid': 'PM07',
+      'departs_name': 'Tospino/平台',
+      'rule_info': {'groupid': 10, 'groupname': 'Tospino打卡'},
+    },
+    'summary_info': {
+      'work_days': 20,
+      'regular_days': 19,
+      'rest_days': 8,
+      'except_days': 1,
+      'regular_work_sec': 576000,
+      'standard_work_sec': 576000,
+    },
+    'exception_infos': const [],
+    'sp_items': const [],
   });
 }
 

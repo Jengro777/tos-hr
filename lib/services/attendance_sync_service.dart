@@ -21,6 +21,7 @@ class AttendanceSyncService {
     required Iterable<String> userIds,
     DateTime? startAt,
     AttendanceSyncMode mode = AttendanceSyncMode.full,
+    AttendanceSyncDataset dataset = AttendanceSyncDataset.all,
     void Function(AttendanceSyncProgress progress)? onProgress,
   }) async {
     final uniqueUserIds =
@@ -34,7 +35,12 @@ class AttendanceSyncService {
       throw const WeComException('没有可同步的成员');
     }
 
-    final windows = buildAttendanceSyncWindows(
+    final checkinWindows = buildAttendanceSyncWindows(
+      firstMonth,
+      lastMonth,
+      startAt: startAt,
+    );
+    final reportWindows = buildAttendanceReportSyncWindows(
       firstMonth,
       lastMonth,
       startAt: startAt,
@@ -46,47 +52,90 @@ class AttendanceSyncService {
           (index + 100).clamp(0, uniqueUserIds.length),
         ),
     ];
-    final existingSnapshotKeys = mode == AttendanceSyncMode.incremental
+    final existingCheckinKeys =
+        mode == AttendanceSyncMode.incremental && dataset.includesCheckins
         ? await database.loadSyncedWindowKeys(
             firstMonth: firstMonth,
             lastMonth: lastMonth,
             userIds: uniqueUserIds.toSet(),
           )
         : const <String>{};
+    final existingReportKeys =
+        mode == AttendanceSyncMode.incremental && dataset.includesReports
+        ? await database.loadSyncedSnapshotKeys(
+            firstMonth: firstMonth,
+            lastMonth: lastMonth,
+            userIds: uniqueUserIds.toSet(),
+          )
+        : const <String>{};
     final now = _clock();
-    final latestCompletedWindowStart = windows
-        .where((window) => !window.endExclusive.isAfter(now))
-        .map((window) => window.start)
-        .fold<DateTime?>(
-          null,
-          (latest, start) =>
-              latest == null || start.isAfter(latest) ? start : latest,
-        );
-    final tasks = <_SyncTask>[];
-    for (final window in windows) {
-      final isCurrentWindow =
-          !now.isBefore(window.start) && now.isBefore(window.endExclusive);
-      final isLatestCompletedWindow =
-          latestCompletedWindowStart != null &&
-          window.start.isAtSameMomentAs(latestCompletedWindowStart);
-      for (var batchIndex = 0; batchIndex < userBatches.length; batchIndex++) {
-        final batch = userBatches[batchIndex]
-            .where(
-              (userId) =>
-                  mode == AttendanceSyncMode.full ||
-                  isCurrentWindow ||
-                  isLatestCompletedWindow ||
-                  !existingSnapshotKeys.contains(
-                    '${window.start.millisecondsSinceEpoch}|$userId',
-                  ),
-            )
-            .toList(growable: false);
-        if (batch.isNotEmpty) {
-          tasks.add(
-            _SyncTask(window: window, batch: batch, batchIndex: batchIndex),
+    DateTime? latestCompletedStart(Iterable<AttendanceSyncWindow> windows) {
+      return windows
+          .where((window) => !window.endExclusive.isAfter(now))
+          .map((window) => window.start)
+          .fold<DateTime?>(
+            null,
+            (latest, start) =>
+                latest == null || start.isAfter(latest) ? start : latest,
           );
+    }
+
+    final tasks = <_SyncTask>[];
+    void addTasks({
+      required Iterable<AttendanceSyncWindow> windows,
+      required _SyncTaskType type,
+      required Set<String> existingKeys,
+    }) {
+      final latestCompletedWindowStart = latestCompletedStart(windows);
+      for (final window in windows) {
+        final isCurrentWindow =
+            !now.isBefore(window.start) && now.isBefore(window.endExclusive);
+        final isLatestCompletedWindow =
+            latestCompletedWindowStart != null &&
+            window.start.isAtSameMomentAs(latestCompletedWindowStart);
+        for (
+          var batchIndex = 0;
+          batchIndex < userBatches.length;
+          batchIndex++
+        ) {
+          final batch = userBatches[batchIndex]
+              .where(
+                (userId) =>
+                    mode == AttendanceSyncMode.full ||
+                    isCurrentWindow ||
+                    isLatestCompletedWindow ||
+                    !existingKeys.contains(
+                      '${window.start.millisecondsSinceEpoch}|$userId',
+                    ),
+              )
+              .toList(growable: false);
+          if (batch.isNotEmpty) {
+            tasks.add(
+              _SyncTask(
+                window: window,
+                batch: batch,
+                batchIndex: batchIndex,
+                type: type,
+              ),
+            );
+          }
         }
       }
+    }
+
+    if (dataset.includesCheckins) {
+      addTasks(
+        windows: checkinWindows,
+        type: _SyncTaskType.checkin,
+        existingKeys: existingCheckinKeys,
+      );
+    }
+    if (dataset.includesReports) {
+      addTasks(
+        windows: reportWindows,
+        type: _SyncTaskType.report,
+        existingKeys: existingReportKeys,
+      );
     }
     final totalSteps = tasks.length;
     final syncRunId = await database.startSyncRun(
@@ -96,6 +145,7 @@ class AttendanceSyncService {
       mode: mode,
     );
     var recordCount = 0;
+    var reportCount = 0;
     var step = 0;
 
     try {
@@ -103,78 +153,118 @@ class AttendanceSyncService {
         final window = task.window;
         final batch = task.batch;
         step++;
-        onProgress?.call(
-          AttendanceSyncProgress(
-            completedSteps: step - 1,
-            totalSteps: totalSteps,
-            window: window,
-            memberBatch: task.batchIndex + 1,
-            memberBatchCount: userBatches.length,
-            recordCount: recordCount,
-            phase: '正在拉取打卡明细',
-          ),
-        );
-
-        final records = await apiClient.getCheckinData(
-          dataType: CheckinDataType.all,
-          start: window.start,
-          end: window.endInclusive,
-          userIds: batch,
-        );
-        recordCount += mode == AttendanceSyncMode.full
-            ? await database.replaceCheckinRecords(
-                records,
-                periodStart: window.start,
-                periodEndExclusive: window.endExclusive,
-                userIds: batch,
-              )
-            : await database.saveCheckinRecords(records);
-        onProgress?.call(
-          AttendanceSyncProgress(
-            completedSteps: step - 1,
-            totalSteps: totalSteps,
-            window: window,
-            memberBatch: task.batchIndex + 1,
-            memberBatchCount: userBatches.length,
-            recordCount: recordCount,
-            phase: '已整批写入 ${records.length} 条，继续获取',
-          ),
-        );
-        await database.markSyncWindows(
-          periodStart: window.start,
-          periodEndExclusive: window.endExclusive,
-          userIds: batch,
-        );
-        onProgress?.call(
-          AttendanceSyncProgress(
-            completedSteps: step,
-            totalSteps: totalSteps,
-            window: window,
-            memberBatch: task.batchIndex + 1,
-            memberBatchCount: userBatches.length,
-            recordCount: recordCount,
-            phase: '本周期同步完成',
-          ),
-        );
+        switch (task.type) {
+          case _SyncTaskType.checkin:
+            onProgress?.call(
+              AttendanceSyncProgress(
+                completedSteps: step - 1,
+                totalSteps: totalSteps,
+                window: window,
+                memberBatch: task.batchIndex + 1,
+                memberBatchCount: userBatches.length,
+                recordCount: recordCount,
+                reportCount: reportCount,
+                phase: '正在拉取打卡明细',
+              ),
+            );
+            final records = await apiClient.getCheckinData(
+              dataType: CheckinDataType.all,
+              start: window.start,
+              end: window.endInclusive,
+              userIds: batch,
+            );
+            recordCount += mode == AttendanceSyncMode.full
+                ? await database.replaceCheckinRecords(
+                    records,
+                    periodStart: window.start,
+                    periodEndExclusive: window.endExclusive,
+                    userIds: batch,
+                  )
+                : await database.saveCheckinRecords(records);
+            await database.markSyncWindows(
+              periodStart: window.start,
+              periodEndExclusive: window.endExclusive,
+              userIds: batch,
+            );
+            onProgress?.call(
+              AttendanceSyncProgress(
+                completedSteps: step,
+                totalSteps: totalSteps,
+                window: window,
+                memberBatch: task.batchIndex + 1,
+                memberBatchCount: userBatches.length,
+                recordCount: recordCount,
+                reportCount: reportCount,
+                phase: '打卡周期同步完成',
+              ),
+            );
+            break;
+          case _SyncTaskType.report:
+            onProgress?.call(
+              AttendanceSyncProgress(
+                completedSteps: step - 1,
+                totalSteps: totalSteps,
+                window: window,
+                memberBatch: task.batchIndex + 1,
+                memberBatchCount: userBatches.length,
+                recordCount: recordCount,
+                reportCount: reportCount,
+                phase: '正在拉取月报原数据',
+              ),
+            );
+            final reports = await apiClient.getMonthlyReport(
+              start: window.start,
+              end: window.endExclusive,
+              userIds: batch,
+            );
+            reportCount += await database.replaceMonthlyReports(
+              reports,
+              year: window.year,
+              periodStart: window.start,
+              periodEndExclusive: window.endExclusive,
+              userIds: batch,
+            );
+            onProgress?.call(
+              AttendanceSyncProgress(
+                completedSteps: step,
+                totalSteps: totalSteps,
+                window: window,
+                memberBatch: task.batchIndex + 1,
+                memberBatchCount: userBatches.length,
+                recordCount: recordCount,
+                reportCount: reportCount,
+                phase: '月报周期同步完成',
+              ),
+            );
+            break;
+        }
       }
 
       await database.finishSyncRun(
         syncRunId,
         succeeded: true,
         recordCount: recordCount,
-        reportCount: 0,
+        reportCount: reportCount,
       );
       return AttendanceSyncResult(
         checkinRecordCount: recordCount,
+        reportCount: reportCount,
         userCount: uniqueUserIds.length,
-        windowCount: tasks.map((task) => task.window).toSet().length,
+        windowCount: tasks
+            .map(
+              (task) =>
+                  '${task.window.start.millisecondsSinceEpoch}|'
+                  '${task.window.endExclusive.millisecondsSinceEpoch}',
+            )
+            .toSet()
+            .length,
       );
     } catch (error) {
       await database.finishSyncRun(
         syncRunId,
         succeeded: false,
         recordCount: recordCount,
-        reportCount: 0,
+        reportCount: reportCount,
         errorMessage: error.toString(),
       );
       rethrow;
@@ -187,12 +277,16 @@ class _SyncTask {
     required this.window,
     required this.batch,
     required this.batchIndex,
+    required this.type,
   });
 
   final AttendanceSyncWindow window;
   final List<String> batch;
   final int batchIndex;
+  final _SyncTaskType type;
 }
+
+enum _SyncTaskType { checkin, report }
 
 class AttendanceSyncProgress {
   const AttendanceSyncProgress({
@@ -202,6 +296,7 @@ class AttendanceSyncProgress {
     required this.memberBatch,
     required this.memberBatchCount,
     required this.recordCount,
+    required this.reportCount,
     required this.phase,
   });
 
@@ -211,6 +306,7 @@ class AttendanceSyncProgress {
   final int memberBatch;
   final int memberBatchCount;
   final int recordCount;
+  final int reportCount;
   final String phase;
 
   String get message {
@@ -219,18 +315,20 @@ class AttendanceSyncProgress {
         : '';
     return '$phase $completedSteps/$totalSteps\n'
         '${window.label}$batchText\n'
-        '已写入 $recordCount 条每日原始打卡记录';
+        '已写入 $recordCount 条每日打卡记录、$reportCount 份月报快照';
   }
 }
 
 class AttendanceSyncResult {
   const AttendanceSyncResult({
     required this.checkinRecordCount,
+    required this.reportCount,
     required this.userCount,
     required this.windowCount,
   });
 
   final int checkinRecordCount;
+  final int reportCount;
   final int userCount;
   final int windowCount;
 }

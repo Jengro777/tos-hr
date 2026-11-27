@@ -257,6 +257,55 @@ async function upsertRecords(connection, records) {
   return unique.length;
 }
 
+async function upsertMonthlyReports(connection, payload) {
+  const year = asInt(payload.year);
+  const periodStart = asInt(payload.period_start_ms);
+  const periodEndExclusive = asInt(payload.period_end_exclusive_ms);
+  const periodStartDate = `${payload.period_start_date ?? ""}`.slice(0, 10);
+  const syncedAt = Date.now();
+  const unique = [
+    ...new Map(
+      (payload.reports ?? [])
+        .filter((report) => report?.user_id && report?.report_json)
+        .map((report) => [`${report.user_id}`, report]),
+    ).values(),
+  ];
+  for (let start = 0; start < unique.length; start += 50) {
+    const chunk = unique.slice(start, start + 50);
+    const valuesSql = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?)").join(", ");
+    const args = chunk.flatMap((report) => {
+      const userId = `${report.user_id}`;
+      return [
+        `${year}|${userId}|${periodStartDate}`,
+        userId,
+        year,
+        periodStart,
+        periodEndExclusive,
+        typeof report.report_json === "string"
+          ? report.report_json
+          : JSON.stringify(report.report_json),
+        syncedAt,
+      ];
+    });
+    await execute(
+      connection,
+      `INSERT INTO monthly_report_snapshots
+        (source_key, user_id, year, period_start, period_end_exclusive,
+         report_json, synced_at)
+       VALUES ${valuesSql}
+       ON DUPLICATE KEY UPDATE
+        user_id = VALUES(user_id),
+        year = VALUES(year),
+        period_start = VALUES(period_start),
+        period_end_exclusive = VALUES(period_end_exclusive),
+        report_json = VALUES(report_json),
+        synced_at = VALUES(synced_at)`,
+      args,
+    );
+  }
+  return unique.length;
+}
+
 async function loadStats(connection) {
   const totals = (await execute(
     connection,
@@ -264,13 +313,17 @@ async function loadStats(connection) {
             COUNT(DISTINCT record_date) AS date_count
      FROM checkin_records`,
   )).rows?.[0] ?? {};
+  const reportTotals = (await execute(
+    connection,
+    "SELECT COUNT(*) AS report_count FROM monthly_report_snapshots",
+  )).rows?.[0] ?? {};
   const latest = (await execute(
     connection,
     "SELECT * FROM sync_runs ORDER BY started_at DESC LIMIT 1",
   )).rows?.[0] ?? null;
   return {
     checkin_record_count: asInt(totals.record_count),
-    monthly_report_count: 0,
+    monthly_report_count: asInt(reportTotals.report_count),
     attendance_date_count: asInt(totals.date_count),
     last_run: latest,
   };
@@ -339,10 +392,16 @@ async function rawSummary(connection, payload, period) {
                   THEN 1 ELSE 0 END) AS actual_work_count,
          MAX(CASE WHEN ${actualWorkPunch}
                   THEN 1 ELSE 0 END) AS attended_day,
+         MAX(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+                  THEN 1 ELSE 0 END) AS expected_day,
          MIN(CASE WHEN ${actualWorkPunch}
                   THEN checkin_at END) AS first_work_at,
          MAX(CASE WHEN ${actualWorkPunch}
                   THEN checkin_at END) AS last_work_at,
+         MIN(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+                  THEN checkin_at END) AS first_expected_at,
+         MAX(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+                  THEN checkin_at END) AS last_expected_at,
          SUM(CASE WHEN exception_type <> '' THEN 1 ELSE 0 END)
            AS exception_count,
          SUM(CASE WHEN exception_type LIKE '%时间异常%' THEN 1 ELSE 0 END)
@@ -362,9 +421,12 @@ async function rawSummary(connection, payload, period) {
      SELECT user_id, period, MAX(group_name) AS group_name,
        SUM(record_count) AS record_count,
        SUM(attended_day) AS attendance_days,
+       SUM(expected_day) AS expected_days,
        SUM(CASE WHEN actual_work_count > 0 AND exception_count = 0
                 THEN 1 ELSE 0 END) AS normal_attendance_days,
        SUM(COALESCE(last_work_at - first_work_at, 0)) AS work_ms,
+       SUM(COALESCE(last_expected_at - first_expected_at, 0))
+         AS standard_work_ms,
        SUM(exception_count) AS exception_count,
        SUM(CASE WHEN exception_count > 0 THEN 1 ELSE 0 END) AS exception_days,
        SUM(time_exception_count) AS time_exception_count,
@@ -431,10 +493,13 @@ async function rawSummary(connection, payload, period) {
     );
     metrics.checkinRecordCount = asNumber(row.record_count);
     metrics.attendanceDays = asNumber(row.attendance_days);
+    metrics.expectedDays = asNumber(row.expected_days);
     metrics.normalAttendanceDays = asNumber(row.normal_attendance_days);
+    metrics.regularDays = asNumber(row.normal_attendance_days);
     metrics.exceptionDays = asNumber(row.exception_days);
     metrics.exceptionCount = asNumber(row.exception_count);
     metrics.regularWorkHours = asNumber(row.work_ms) / 3_600_000;
+    metrics.standardWorkHours = asNumber(row.standard_work_ms) / 3_600_000;
     metrics.timeExceptionCount = asNumber(row.time_exception_count);
     metrics.notCheckedInCount = asNumber(row.not_checked_count);
     metrics.wifiExceptionCount = asNumber(row.wifi_exception_count);
@@ -535,6 +600,26 @@ export async function handleDatabase(env, action, payload = {}) {
     }
     return { count: await upsertRecords(connection, payload.records ?? []) };
   }
+  if (action === "save_monthly_reports") {
+    return { count: await upsertMonthlyReports(connection, payload) };
+  }
+  if (action === "replace_monthly_reports") {
+    const userIds = uniqueStrings(payload.user_ids);
+    if (userIds.length) {
+      await execute(
+        connection,
+        `DELETE FROM monthly_report_snapshots
+         WHERE period_start >= ? AND period_start < ?
+           AND user_id IN (${placeholders(userIds)})`,
+        [
+          asInt(payload.period_start_ms),
+          asInt(payload.period_end_exclusive_ms),
+          ...userIds,
+        ],
+      );
+    }
+    return { count: await upsertMonthlyReports(connection, payload) };
+  }
   if (action === "load_synced_window_keys") {
     const userIds = uniqueStrings(payload.user_ids);
     const rows = (await execute(
@@ -548,6 +633,44 @@ export async function handleDatabase(env, action, payload = {}) {
       ],
     )).rows ?? [];
     return rows.map((row) => `${row.period_start}|${row.user_id}`);
+  }
+  if (action === "load_report_snapshot_keys") {
+    const userIds = uniqueStrings(payload.user_ids);
+    const rows = (await execute(
+      connection,
+      `SELECT user_id, period_start FROM monthly_report_snapshots
+       WHERE period_start >= ? AND period_start < ?${userClause(userIds)}`,
+      [
+        asInt(payload.first_month_ms),
+        asInt(payload.last_month_end_ms),
+        ...userIds,
+      ],
+    )).rows ?? [];
+    return rows.map((row) => `${row.period_start}|${row.user_id}`);
+  }
+  if (action === "load_monthly_report_snapshots") {
+    const userIds = uniqueStrings(payload.user_ids);
+    const rows = (await execute(
+      connection,
+      `SELECT user_id, year, period_start, period_end_exclusive, report_json
+       FROM monthly_report_snapshots
+       WHERE period_start >= ? AND period_start < ?${userClause(userIds)}
+       ORDER BY period_start, user_id`,
+      [
+        asInt(payload.start_ms),
+        asInt(payload.end_exclusive_ms),
+        ...userIds,
+      ],
+    )).rows ?? [];
+    return rows.map((row) => ({
+      user_id: `${row.user_id ?? ""}`,
+      year: asInt(row.year),
+      period_start: asInt(row.period_start),
+      period_end_exclusive: asInt(row.period_end_exclusive),
+      report_json: typeof row.report_json === "string"
+        ? row.report_json
+        : JSON.stringify(row.report_json ?? {}),
+    }));
   }
   if (action === "mark_sync_windows") {
     const userIds = uniqueStrings(payload.user_ids);
@@ -621,6 +744,15 @@ export async function handleDatabase(env, action, payload = {}) {
     return row?.latest_checkin_at == null
       ? null
       : { milliseconds: asInt(row.latest_checkin_at) };
+  }
+  if (action === "load_latest_monthly_report_time") {
+    const row = (await execute(
+      connection,
+      "SELECT MAX(period_start) AS latest_report_at FROM monthly_report_snapshots",
+    )).rows?.[0];
+    return row?.latest_report_at == null
+      ? null
+      : { milliseconds: asInt(row.latest_report_at) };
   }
   if (action === "load_raw_year_summary") {
     return await rawSummary(connection, payload, "year");

@@ -7,6 +7,7 @@ import 'attendance_database.dart';
 import 'attendance_summary.dart';
 import 'checkin_record.dart';
 import 'connection_status.dart';
+import 'monthly_report.dart';
 
 class CloudflareAttendanceDatabase extends AttendanceDatabase {
   CloudflareAttendanceDatabase({required this.config, http.Client? httpClient})
@@ -123,12 +124,74 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<int> saveMonthlyReports(
+    Iterable<MonthlyReport> reports, {
+    required int year,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  }) async {
+    final data = _map(
+      await _post('save_monthly_reports', {
+        ..._monthlyReportPayload(
+          reports,
+          year: year,
+          periodStart: periodStart,
+          periodEndExclusive: periodEndExclusive,
+        ),
+      }),
+    );
+    return _int(data['count']);
+  }
+
+  @override
+  Future<int> replaceMonthlyReports(
+    Iterable<MonthlyReport> reports, {
+    required int year,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+    required Iterable<String> userIds,
+  }) async {
+    final data = _map(
+      await _post('replace_monthly_reports', {
+        ..._monthlyReportPayload(
+          reports,
+          year: year,
+          periodStart: periodStart,
+          periodEndExclusive: periodEndExclusive,
+        ),
+        'user_ids': userIds.toList(growable: false),
+      }),
+    );
+    return _int(data['count']);
+  }
+
+  @override
   Future<Set<String>> loadSyncedWindowKeys({
     required DateTime firstMonth,
     required DateTime lastMonth,
     required Set<String> userIds,
   }) async {
     final data = await _post('load_synced_window_keys', {
+      'first_month_ms': DateTime(
+        firstMonth.year,
+        firstMonth.month,
+      ).millisecondsSinceEpoch,
+      'last_month_end_ms': DateTime(
+        lastMonth.year,
+        lastMonth.month + 1,
+      ).millisecondsSinceEpoch,
+      'user_ids': userIds.toList(growable: false),
+    });
+    return data is List ? data.map((value) => '$value').toSet() : <String>{};
+  }
+
+  @override
+  Future<Set<String>> loadSyncedSnapshotKeys({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    required Set<String> userIds,
+  }) async {
+    final data = await _post('load_report_snapshot_keys', {
       'first_month_ms': DateTime(
         firstMonth.year,
         firstMonth.month,
@@ -218,6 +281,15 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<DateTime?> loadLatestMonthlyReportTime() async {
+    final data = await _post('load_latest_monthly_report_time');
+    if (data is! Map || data['milliseconds'] == null) {
+      return null;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(_int(data['milliseconds']));
+  }
+
+  @override
   Future<List<AttendanceSummaryRow>> loadRawYearSummary({
     required int firstYear,
     required int lastYear,
@@ -262,6 +334,94 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<List<AttendanceSummaryRow>> loadSummary({
+    required int firstYear,
+    required int lastYear,
+    Set<String> userIds = const {},
+  }) async {
+    final reports = await _loadMonthlyReportSnapshots(
+      start: DateTime(firstYear),
+      endExclusive: DateTime(lastYear + 1),
+      userIds: userIds,
+    );
+    final builder = AttendanceSummaryBuilder();
+    for (final snapshot in reports) {
+      builder.addReports([snapshot.report], year: snapshot.year);
+    }
+    final rawRows = await loadRawYearSummary(
+      firstYear: firstYear,
+      lastYear: lastYear,
+      userIds: userIds,
+    );
+    final rawByKey = {
+      for (final row in rawRows) '${row.year}|${row.userId}': row,
+    };
+    return [
+      for (final row in builder.build())
+        _withRawAttendance(row, rawByKey['${row.year}|${row.userId}']),
+    ];
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadMonthlySummary({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    final reports = await _loadMonthlyReportSnapshots(
+      start: DateTime(firstMonth.year, firstMonth.month),
+      endExclusive: DateTime(lastMonth.year, lastMonth.month + 1),
+      userIds: userIds,
+    );
+    final builder = AttendanceMonthlySummaryBuilder();
+    for (final snapshot in reports) {
+      builder.addReports(
+        [snapshot.report],
+        year: snapshot.periodStart.year,
+        month: snapshot.periodStart.month,
+      );
+    }
+    final rawRows = await loadRawMonthlySummary(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
+    final rawByKey = {
+      for (final row in rawRows) '${row.periodLabel}|${row.userId}': row,
+    };
+    return [
+      for (final row in builder.build())
+        _withRawAttendance(row, rawByKey['${row.periodLabel}|${row.userId}']),
+    ];
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    final monthlyRows = await loadMonthlySummary(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
+    final rows = aggregateAttendanceAllTime(monthlyRows);
+    final rawRows = await loadRawAllTimeSummary(
+      startDate: DateTime(firstMonth.year, firstMonth.month),
+      endDate: DateTime(
+        lastMonth.year,
+        lastMonth.month + 1,
+      ).subtract(const Duration(days: 1)),
+      userIds: userIds,
+    );
+    final rawByUser = {for (final row in rawRows) row.userId: row};
+    return [
+      for (final row in rows) _withRawAttendance(row, rawByUser[row.userId]),
+    ];
+  }
+
+  @override
   Future<List<AttendanceSummaryRow>> loadDailyCheckinSummary({
     required DateTime startDate,
     required DateTime endDate,
@@ -272,6 +432,56 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
       'end_date': _dateKey(endDate),
       'user_ids': userIds.toList(growable: false),
     });
+  }
+
+  AttendanceSummaryRow _withRawAttendance(
+    AttendanceSummaryRow row,
+    AttendanceSummaryRow? raw,
+  ) {
+    return row
+        .withMetric(
+          AttendanceMetric.checkinRecordCount,
+          raw?.valueOf(AttendanceMetric.checkinRecordCount) ?? 0,
+        )
+        .withMetric(
+          AttendanceMetric.attendanceDays,
+          raw?.valueOf(AttendanceMetric.attendanceDays) ?? 0,
+        );
+  }
+
+  Future<List<_CloudMonthlyReportSnapshot>> _loadMonthlyReportSnapshots({
+    required DateTime start,
+    required DateTime endExclusive,
+    required Set<String> userIds,
+  }) async {
+    final data = await _post('load_monthly_report_snapshots', {
+      'start_ms': start.millisecondsSinceEpoch,
+      'end_exclusive_ms': endExclusive.millisecondsSinceEpoch,
+      'user_ids': userIds.toList(growable: false),
+    });
+    if (data is! List) {
+      return const [];
+    }
+    final snapshots = <_CloudMonthlyReportSnapshot>[];
+    for (final item in data.whereType<Map>()) {
+      final row = Map<String, dynamic>.from(item);
+      final rawReport = row['report_json'];
+      final decoded = rawReport is String ? jsonDecode(rawReport) : rawReport;
+      if (decoded is! Map) {
+        continue;
+      }
+      final periodStartMs = _int(row['period_start']);
+      final periodStart = DateTime.fromMillisecondsSinceEpoch(periodStartMs);
+      final parsedYear = _int(row['year']);
+      snapshots.add(
+        _CloudMonthlyReportSnapshot(
+          year: parsedYear > 0 ? parsedYear : periodStart.year,
+          periodStart: periodStart,
+          report: MonthlyReport.fromJson(Map<String, dynamic>.from(decoded)),
+        ),
+      );
+    }
+    return snapshots;
   }
 
   Future<List<AttendanceSummaryRow>> _summaryRows(
@@ -329,6 +539,24 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
     'media_ids': record.mediaIds,
   };
 
+  Map<String, Object?> _monthlyReportPayload(
+    Iterable<MonthlyReport> reports, {
+    required int year,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  }) {
+    return {
+      'year': year,
+      'period_start_date': _dateKey(periodStart),
+      'period_start_ms': periodStart.millisecondsSinceEpoch,
+      'period_end_exclusive_ms': periodEndExclusive.millisecondsSinceEpoch,
+      'reports': [
+        for (final report in reports)
+          {'user_id': report.userId, 'report_json': report.toJson()},
+      ],
+    };
+  }
+
   Future<Object?> _post(
     String action, [
     Map<String, Object?> payload = const {},
@@ -360,6 +588,18 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   Future<void> close() async {
     _httpClient.close();
   }
+}
+
+class _CloudMonthlyReportSnapshot {
+  const _CloudMonthlyReportSnapshot({
+    required this.year,
+    required this.periodStart,
+    required this.report,
+  });
+
+  final int year;
+  final DateTime periodStart;
+  final MonthlyReport report;
 }
 
 Map<String, dynamic> _map(Object? value) =>

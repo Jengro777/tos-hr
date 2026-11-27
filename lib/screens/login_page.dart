@@ -138,7 +138,7 @@ class _LoginPageState extends State<LoginPage> {
             runSpacing: 10,
             children: const [
               _FeaturePill(icon: Icons.sync_rounded, label: '增量同步'),
-              _FeaturePill(icon: Icons.storage_rounded, label: '本地统计'),
+              _FeaturePill(icon: Icons.storage_rounded, label: 'TiDB 统计'),
               _FeaturePill(icon: Icons.shield_outlined, label: '凭据保护'),
             ],
           ),

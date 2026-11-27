@@ -9,6 +9,7 @@ import 'attendance_database.dart';
 import 'attendance_summary.dart';
 import 'checkin_record.dart';
 import 'connection_status.dart';
+import 'monthly_report.dart';
 import 'orm/attendance_orm_store.dart';
 import 'orm/attendance_schema.dart';
 import 'orm/mysql_dartonic_driver.dart';
@@ -81,6 +82,38 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
   }) async {
     return (await _orm).replaceCheckinRecords(
       records,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<int> saveMonthlyReports(
+    Iterable<MonthlyReport> reports, {
+    required int year,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+  }) async {
+    return (await _orm).saveMonthlyReports(
+      reports,
+      year: year,
+      periodStart: periodStart,
+      periodEndExclusive: periodEndExclusive,
+    );
+  }
+
+  @override
+  Future<int> replaceMonthlyReports(
+    Iterable<MonthlyReport> reports, {
+    required int year,
+    required DateTime periodStart,
+    required DateTime periodEndExclusive,
+    required Iterable<String> userIds,
+  }) async {
+    return (await _orm).replaceMonthlyReports(
+      reports,
+      year: year,
       periodStart: periodStart,
       periodEndExclusive: periodEndExclusive,
       userIds: userIds,
@@ -163,6 +196,11 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<DateTime?> loadLatestMonthlyReportTime() async {
+    return (await _orm).loadLatestMonthlyReportTime();
+  }
+
+  @override
   Future<List<AttendanceSummaryRow>> loadRawYearSummary({
     required int firstYear,
     required int lastYear,
@@ -197,6 +235,71 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
     return (await _orm).loadRawAllTimeSummary(
       startDate: startDate,
       endDate: endDate,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadSummary({
+    required int firstYear,
+    required int lastYear,
+    Set<String> userIds = const {},
+  }) async {
+    return (await _orm).loadSummary(
+      firstYear: firstYear,
+      lastYear: lastYear,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadMonthlySummary({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    return (await _orm).loadMonthlySummary(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    return (await _orm).loadAllTimeSummary(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<List<AttendanceSummaryRow>> loadDailyCheckinSummary({
+    required DateTime startDate,
+    required DateTime endDate,
+    Set<String> userIds = const {},
+  }) async {
+    return (await _orm).loadDailyCheckinSummary(
+      startDate: startDate,
+      endDate: endDate,
+      userIds: userIds,
+    );
+  }
+
+  @override
+  Future<Set<String>> loadSyncedSnapshotKeys({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    required Set<String> userIds,
+  }) async {
+    return (await _orm).loadSyncedSnapshotKeys(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
       userIds: userIds,
     );
   }
@@ -260,11 +363,7 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
       schemas: tables.all,
       dialect: Dialect.mysql,
     );
-    return AttendanceOrmStore(
-      database: database,
-      tables: tables,
-      monthlyReportsEnabled: false,
-    );
+    return AttendanceOrmStore(database: database, tables: tables);
   }
 
   /// Bootstrap only. All application reads and writes use the ORM store.
@@ -319,6 +418,18 @@ CREATE TABLE IF NOT EXISTS sync_windows (
   period_end_exclusive BIGINT NOT NULL,
   synced_at BIGINT NOT NULL,
   INDEX idx_sync_window_period (period_start, period_end_exclusive)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+''');
+    await connection.query('''
+CREATE TABLE IF NOT EXISTS monthly_report_snapshots (
+  source_key VARCHAR(512) PRIMARY KEY,
+  user_id VARCHAR(191) NOT NULL,
+  year INT NOT NULL,
+  period_start BIGINT NOT NULL,
+  period_end_exclusive BIGINT NOT NULL,
+  report_json TEXT NOT NULL,
+  synced_at BIGINT NOT NULL,
+  INDEX idx_report_year_user (year, user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 ''');
   }

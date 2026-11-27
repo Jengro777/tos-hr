@@ -10,6 +10,7 @@ import '../theme/tospino_hr_style.dart';
 
 typedef AttendanceSyncCallback = Future<bool> Function(
   AttendanceSyncMode mode,
+  AttendanceSyncDataset dataset,
   ValueChanged<String>? onProgress,
 );
 
@@ -281,19 +282,50 @@ class _SettingsPageState extends State<SettingsPage> {
           _SyncActionTile(
             icon: Icons.sync_rounded,
             title: '增量获取打卡记录',
-            description: '跳过已完成的半月周期，并刷新当前未结束周期。',
+            description: '按最新打卡时间补齐缺失的半月周期。',
             color: TospinoHrColors.brand,
             onTap: widget.config.isConfigured
-                ? () => _runSync(AttendanceSyncMode.incremental)
+                ? () => _runSync(
+                    AttendanceSyncMode.incremental,
+                    AttendanceSyncDataset.checkins,
+                  )
+                : null,
+          ),
+          const SizedBox(height: 10),
+          _SyncActionTile(
+            icon: Icons.description_outlined,
+            title: '增量获取月报',
+            description: '按最新月报周期补齐缺失的自然月。',
+            color: TospinoHrColors.info,
+            onTap: widget.config.isConfigured
+                ? () => _runSync(
+                    AttendanceSyncMode.incremental,
+                    AttendanceSyncDataset.reports,
+                  )
+                : null,
+          ),
+          const SizedBox(height: 10),
+          _SyncActionTile(
+            icon: Icons.sync_alt_rounded,
+            title: '增量同步全部数据',
+            description: '同时补齐打卡记录和月报，任一边落后时取较早周期。',
+            color: TospinoHrColors.success,
+            onTap: widget.config.isConfigured
+                ? () => _runSync(
+                    AttendanceSyncMode.incremental,
+                    AttendanceSyncDataset.all,
+                  )
                 : null,
           ),
           const SizedBox(height: 10),
           _SyncActionTile(
             icon: Icons.warning_amber_rounded,
-            title: '全量获取覆盖打卡记录',
+            title: '全量覆盖全部数据',
             description: '重新获取全部历史周期，耗时较长，执行期间不可离开。',
             color: TospinoHrColors.danger,
-            onTap: widget.config.isConfigured ? _confirmAndRunFullSync : null,
+            onTap: widget.config.isConfigured
+                ? () => _confirmAndRunFullSync(AttendanceSyncDataset.all)
+                : null,
           ),
           if (!widget.config.isConfigured) ...[
             const SizedBox(height: 12),
@@ -316,7 +348,7 @@ class _SettingsPageState extends State<SettingsPage> {
         children: [
           _CardHeading(
             icon: Icons.storage_rounded,
-            title: '本地数据',
+            title: 'TiDB 数据',
             subtitle: _loadingStats ? '正在读取 TiDB 状态…' : 'TiDB 持久化存储',
             trailing: IconButton(
               onPressed: _loadingStats ? null : _loadStats,
@@ -338,6 +370,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 label: '打卡日期',
                 value: '${stats?.attendanceDateCount ?? 0}',
                 unit: '天',
+              ),
+              _DataMetric(
+                label: '月报快照',
+                value: '${stats?.monthlyReportCount ?? 0}',
+                unit: '份',
               ),
             ],
           ),
@@ -513,7 +550,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _confirmAndRunFullSync() async {
+  Future<void> _confirmAndRunFullSync(AttendanceSyncDataset dataset) async {
     _confirmationController.clear();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -529,7 +566,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的打卡记录，'
+                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的数据，'
                     '耗时较长，执行期间不能关闭进度窗口或离开页面。',
                     style: TextStyle(height: 1.55),
                   ),
@@ -580,13 +617,17 @@ class _SettingsPageState extends State<SettingsPage> {
       },
     );
     if (confirmed == true && mounted) {
-      await _runSync(AttendanceSyncMode.full);
+      await _runSync(AttendanceSyncMode.full, dataset);
     }
   }
 
-  Future<void> _runSync(AttendanceSyncMode mode) async {
+  Future<void> _runSync(
+    AttendanceSyncMode mode,
+    AttendanceSyncDataset dataset,
+  ) async {
     final progress = ValueNotifier<String>(
-      mode == AttendanceSyncMode.full ? '正在准备全量获取…' : '正在准备增量获取…',
+      '正在准备${mode == AttendanceSyncMode.full ? '全量' : '增量'}'
+      '获取${dataset.label}…',
     );
     final navigator = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
@@ -596,7 +637,8 @@ class _SettingsPageState extends State<SettingsPage> {
         canPop: false,
         child: AlertDialog(
           title: Text(
-            mode == AttendanceSyncMode.full ? '正在全量获取打卡记录' : '正在增量获取打卡记录',
+            '正在${mode == AttendanceSyncMode.full ? '全量' : '增量'}'
+            '获取${dataset.label}',
           ),
           content: SizedBox(
             width: 500,
@@ -637,7 +679,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     await Future<void>.delayed(const Duration(milliseconds: 80));
     var lastMessage = progress.value;
-    final succeeded = await widget.onSync(mode, (message) {
+    final succeeded = await widget.onSync(mode, dataset, (message) {
       lastMessage = message;
       progress.value = message;
     });
@@ -652,7 +694,8 @@ class _SettingsPageState extends State<SettingsPage> {
         SnackBar(
           content: Text(
             succeeded
-                ? '${mode == AttendanceSyncMode.full ? '全量' : '增量'}获取已完成'
+                ? '${mode == AttendanceSyncMode.full ? '全量' : '增量'}'
+                      '${dataset.label}获取已完成'
                 : lastMessage,
           ),
         ),

@@ -17,6 +17,7 @@ void main() {
 
     expect(find.text('分年汇总测试'), findsOneWidget);
     expect(find.text('吴振国'), findsOneWidget);
+    expect(find.text('应出勤天数(天)'), findsOneWidget);
     expect(find.text('合计'), findsOneWidget);
     await tester.tap(find.text('吴振国'));
     await tester.pumpAndSettle();
@@ -39,8 +40,8 @@ void main() {
     expect(find.text('吴振国'), findsOneWidget);
     expect(
       find.text(
-        '实际出勤天数按真实上下班打卡的唯一日期计算，已排除企业微信标记为'
-        '“未打卡”的排班占位记录；原始接口不含完整排班，因此不推算应出勤天数。'
+        '应出勤、正常天数、异常和实际工时取自企业微信月报；实际出勤天数'
+        '取自真实上下班打卡日期，并排除“未打卡”排班占位记录。'
         '点击姓名可查看全部 SQL 统计明细。',
       ),
       findsOneWidget,

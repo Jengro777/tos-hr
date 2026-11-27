@@ -284,6 +284,21 @@ class AttendanceOrmStore {
     return DateTime.fromMillisecondsSinceEpoch(_intValue(value));
   }
 
+  Future<DateTime?> loadLatestMonthlyReportTime() async {
+    if (!monthlyReportsEnabled) {
+      return null;
+    }
+    final row = await database
+        .select({'latest_report_at': max(tables.monthlyReports.periodStart)})
+        .from(tables.monthlyReports)
+        .first();
+    final value = row?.raw['latest_report_at'];
+    if (value == null) {
+      return null;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(_intValue(value));
+  }
+
   Future<List<AttendanceSummaryRow>> loadRawYearSummary({
     required int firstYear,
     required int lastYear,
@@ -693,6 +708,7 @@ class AttendanceOrmStore {
           'group_name': expression('MAX(${daily.groupName.toSqlIdentifier()})'),
           'record_count': _sumOf(daily.recordCount),
           'attendance_days': _sumOf(daily.attendedDay),
+          'expected_days': _sumOf(daily.expectedDay),
           'normal_attendance_days': SqlExpression(
             'SUM(CASE WHEN '
             '${daily.actualWorkCount.toSqlIdentifier()} > 0 AND '
@@ -703,6 +719,11 @@ class AttendanceOrmStore {
             'SUM(COALESCE('
             '${daily.lastWorkAt.toSqlIdentifier()} - '
             '${daily.firstWorkAt.toSqlIdentifier()}, 0))',
+          ),
+          'standard_work_ms': SqlExpression(
+            'SUM(COALESCE('
+            '${daily.lastExpectedAt.toSqlIdentifier()} - '
+            '${daily.firstExpectedAt.toSqlIdentifier()}, 0))',
           ),
           'exception_count': _sumOf(daily.exceptionCount),
           'exception_days': SqlExpression(
@@ -762,12 +783,24 @@ class AttendanceOrmStore {
           'attended_day': SqlExpression(
             'MAX(CASE WHEN $actualWorkPunch THEN 1 ELSE 0 END)',
           ),
+          'expected_day': SqlExpression(
+            'MAX(CASE WHEN $checkinType IN (\'上班打卡\', \'下班打卡\') '
+            'THEN 1 ELSE 0 END)',
+          ),
           'first_work_at': SqlExpression(
             'MIN(CASE WHEN $actualWorkPunch '
             'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
           ),
           'last_work_at': SqlExpression(
             'MAX(CASE WHEN $actualWorkPunch '
+            'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
+          ),
+          'first_expected_at': SqlExpression(
+            'MIN(CASE WHEN $checkinType IN (\'上班打卡\', \'下班打卡\') '
+            'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
+          ),
+          'last_expected_at': SqlExpression(
+            'MAX(CASE WHEN $checkinType IN (\'上班打卡\', \'下班打卡\') '
             'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
           ),
           'exception_count': _conditionalSum("$exceptionType <> ''"),
@@ -818,7 +851,11 @@ class AttendanceOrmStore {
         AttendanceMetric.attendanceDays: _doubleValue(
           row.raw['attendance_days'],
         ),
+        AttendanceMetric.expectedDays: _doubleValue(row.raw['expected_days']),
         AttendanceMetric.normalAttendanceDays: _doubleValue(
+          row.raw['normal_attendance_days'],
+        ),
+        AttendanceMetric.regularDays: _doubleValue(
           row.raw['normal_attendance_days'],
         ),
         AttendanceMetric.exceptionDays: _doubleValue(row.raw['exception_days']),
@@ -827,6 +864,8 @@ class AttendanceOrmStore {
         ),
         AttendanceMetric.regularWorkHours:
             _doubleValue(row.raw['work_ms']) / 3600000,
+        AttendanceMetric.standardWorkHours:
+            _doubleValue(row.raw['standard_work_ms']) / 3600000,
         AttendanceMetric.timeExceptionCount: _doubleValue(
           row.raw['time_exception_count'],
         ),
@@ -1089,8 +1128,17 @@ class _DailyColumns {
     'actual_work_count',
   );
   final attendedDay = _CteColumnRef<int>('attendance_daily', 'attended_day');
+  final expectedDay = _CteColumnRef<int>('attendance_daily', 'expected_day');
   final firstWorkAt = _CteColumnRef<int>('attendance_daily', 'first_work_at');
   final lastWorkAt = _CteColumnRef<int>('attendance_daily', 'last_work_at');
+  final firstExpectedAt = _CteColumnRef<int>(
+    'attendance_daily',
+    'first_expected_at',
+  );
+  final lastExpectedAt = _CteColumnRef<int>(
+    'attendance_daily',
+    'last_expected_at',
+  );
   final exceptionCount = _CteColumnRef<int>(
     'attendance_daily',
     'exception_count',

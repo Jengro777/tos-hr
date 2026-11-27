@@ -194,12 +194,12 @@ class _CheckinPageState extends State<CheckinPage> {
                                 Icons.calendar_view_month_rounded,
                                 size: 18,
                               ),
-                              label: Text('月度汇总'),
+                              label: Text('月报'),
                             ),
                             ButtonSegment(
                               value: _WorkspaceMode.summary,
                               icon: Icon(Icons.table_chart_rounded, size: 18),
-                              label: Text('分年汇总'),
+                              label: Text('年报'),
                             ),
                             ButtonSegment(
                               value: _WorkspaceMode.all,
@@ -470,7 +470,7 @@ class _CheckinPageState extends State<CheckinPage> {
               ),
               const SizedBox(height: 9),
               const Text(
-                '统计所选自然月，人员范围为当前应用可见范围内的全部成员。',
+                '直接查看所选自然月的企业微信月报原数据。',
                 style: TextStyle(color: _muted, fontSize: 12),
               ),
             ] else if (_mode == _WorkspaceMode.summary) ...[
@@ -499,7 +499,7 @@ class _CheckinPageState extends State<CheckinPage> {
               ),
               const SizedBox(height: 9),
               const Text(
-                '统计所选自然年，人员范围为当前应用可见范围内的全部成员。',
+                '汇总所选年份全部成员的各月企业微信月报数据。',
                 style: TextStyle(color: _muted, fontSize: 12),
               ),
             ] else ...[
@@ -563,7 +563,7 @@ class _CheckinPageState extends State<CheckinPage> {
             ),
             const SizedBox(height: 9),
             const Text(
-              '成员 UserID 留空时查询本地库中的全部成员。',
+              '成员 UserID 留空时查询 TiDB 中的全部成员。',
               style: TextStyle(color: _muted, fontSize: 12),
             ),
           ],
@@ -605,11 +605,15 @@ class _CheckinPageState extends State<CheckinPage> {
             label: Text(
               _isLoading
                   ? isDetails
-                        ? '正在读取本地记录…'
-                        : '正在读取本地数据…'
+                        ? '正在读取 TiDB 记录…'
+                        : '正在读取 TiDB 数据…'
                   : isDetails
-                  ? '查询本地打卡记录'
-                  : '查看本地汇总',
+                  ? '查询 TiDB 打卡记录'
+                  : _mode == _WorkspaceMode.monthly
+                  ? '查看月报'
+                  : _mode == _WorkspaceMode.summary
+                  ? '查看年报'
+                  : '查看 TiDB 汇总',
             ),
           ),
         ],
@@ -979,8 +983,12 @@ class _CheckinPageState extends State<CheckinPage> {
           _isLoading
               ? '正在读取…'
               : isDetails
-              ? '查询本地记录'
-              : '查看本地汇总',
+              ? '查询 TiDB 记录'
+              : _mode == _WorkspaceMode.monthly
+              ? '查看月报'
+              : _mode == _WorkspaceMode.summary
+              ? '查看年报'
+              : '查看 TiDB 汇总',
         ),
       ),
     );
@@ -1114,7 +1122,7 @@ class _CheckinPageState extends State<CheckinPage> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.expand_more_rounded, size: 19),
-                      label: const Text('加载更多本地记录'),
+                      label: const Text('加载更多 TiDB 记录'),
                     ),
                   ),
                 ],
@@ -1127,8 +1135,8 @@ class _CheckinPageState extends State<CheckinPage> {
 
   Widget _buildMonthlyResultPanel() {
     return _buildAnalyticsResultPanel(
-      title: '月度考勤汇总',
-      subtitle: '从所选范围逐月汇总，首条记录视为该成员的统计起点',
+      title: '企业微信月报',
+      subtitle: '直接展示所选自然月拉取的企业微信月报原数据',
       icon: Icons.calendar_view_month_outlined,
       periodColumnLabel: '月份',
       showYearFilter: false,
@@ -1137,8 +1145,8 @@ class _CheckinPageState extends State<CheckinPage> {
 
   Widget _buildSummaryResultPanel() {
     return _buildAnalyticsResultPanel(
-      title: '分年考勤汇总',
-      subtitle: '同一成员同一年度合并，底部合计随筛选更新',
+      title: '企业微信年报',
+      subtitle: '按成员汇总该年度各月的企业微信月报数据',
       icon: Icons.table_chart_outlined,
       periodColumnLabel: '年份',
       showYearFilter: false,
@@ -1147,8 +1155,8 @@ class _CheckinPageState extends State<CheckinPage> {
 
   Widget _buildAllTimeResultPanel() {
     return _buildAnalyticsResultPanel(
-      title: '历史打卡汇总',
-      subtitle: '按所选日期精确汇总所有成员的打卡明细',
+      title: '历史原始打卡统计',
+      subtitle: '按企业微信月报口径，从所选范围的每日原始打卡重新计算',
       icon: Icons.history_outlined,
       periodColumnLabel: '范围',
       showYearFilter: false,
@@ -1278,7 +1286,7 @@ class _CheckinPageState extends State<CheckinPage> {
             const _EmptyState(
               icon: Icons.table_chart_rounded,
               title: '选择范围后开始统计',
-              description: '请先在设置中同步打卡记录，再查看离线统计结果。',
+              description: '请先在设置中同步打卡记录和月报，再查看统计结果。',
             )
           else if (_summaryRows.isEmpty)
             const _EmptyState(
@@ -1294,6 +1302,7 @@ class _CheckinPageState extends State<CheckinPage> {
               showYearFilter: showYearFilter,
               showSourceRecordColumn: showSourceRecordColumn,
               visibleMetrics: visibleMetrics,
+              rawCheckinSource: _mode == _WorkspaceMode.all,
             ),
         ],
       ),
@@ -1443,9 +1452,9 @@ class _CheckinPageState extends State<CheckinPage> {
         _totalRecordCount = 0;
         _totalMemberCount = 0;
         _totalExceptionCount = 0;
-        _errorMessage = '读取本地打卡明细失败：$error';
+        _errorMessage = '读取 TiDB 打卡明细失败：$error';
       });
-      _showOperationPrompt('读取本地打卡明细失败：$error');
+      _showOperationPrompt('读取 TiDB 打卡明细失败：$error');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -1538,9 +1547,9 @@ class _CheckinPageState extends State<CheckinPage> {
       }
       setState(() {
         _summaryProgress = null;
-        _errorMessage = '读取本地考勤数据失败：$error';
+        _errorMessage = '读取 TiDB 考勤数据失败：$error';
       });
-      _showOperationPrompt('读取本地考勤数据失败：$error');
+      _showOperationPrompt('读取 TiDB 考勤数据失败：$error');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -1550,6 +1559,7 @@ class _CheckinPageState extends State<CheckinPage> {
 
   Future<bool> _syncAllData(
     AttendanceSyncMode mode, {
+    AttendanceSyncDataset dataset = AttendanceSyncDataset.all,
     ValueChanged<String>? onProgress,
   }) async {
     FocusManager.instance.primaryFocus?.unfocus();
@@ -1585,21 +1595,44 @@ class _CheckinPageState extends State<CheckinPage> {
         throw StateError(databaseStatus.message);
       }
       if (mode == AttendanceSyncMode.incremental) {
-        final latestCheckinAt = await _database.loadLatestCheckinTime();
-        if (latestCheckinAt != null) {
-          incrementalStart = DateTime(
-            latestCheckinAt.year,
-            latestCheckinAt.month,
-            latestCheckinAt.day >= 16 ? 16 : 1,
+        final latestCheckinAt = dataset.includesCheckins
+            ? await _database.loadLatestCheckinTime()
+            : null;
+        final latestReportAt = dataset.includesReports
+            ? await _database.loadLatestMonthlyReportTime()
+            : null;
+        final starts = <DateTime>[
+          if (dataset.includesCheckins && latestCheckinAt != null)
+            attendanceHalfMonthStart(latestCheckinAt),
+          if (dataset.includesReports && latestReportAt != null)
+            attendanceHalfMonthStart(latestReportAt),
+        ];
+        final requiredStartCount =
+            (dataset.includesCheckins ? 1 : 0) +
+            (dataset.includesReports ? 1 : 0);
+        if (requiredStartCount > 0 && starts.length == requiredStartCount) {
+          final resolvedStart = starts.reduce(
+            (earlier, value) => earlier.isBefore(value) ? earlier : value,
           );
-          syncStart = DateTime(latestCheckinAt.year, latestCheckinAt.month);
-          updateProgress(
-            '数据库最新打卡：'
-            '${DateFormat('yyyy-MM-dd HH:mm:ss').format(latestCheckinAt)}，'
+          incrementalStart = resolvedStart;
+          syncStart = DateTime(resolvedStart.year, resolvedStart.month);
+          final latestParts = <String>[
+            if (latestCheckinAt != null)
+              '最新打卡：'
+                  '${DateFormat('yyyy-MM-dd HH:mm:ss').format(latestCheckinAt)}',
+            if (latestReportAt != null)
+              '最新月报周期：'
+                  '${DateFormat('yyyy-MM-dd').format(latestReportAt)}',
             '从 ${DateFormat('yyyy-MM-dd').format(incrementalStart)} 开始增量',
-          );
+          ];
+          updateProgress(latestParts.join('；'));
         } else {
-          updateProgress('数据库暂无打卡记录，增量将补全历史数据…');
+          incrementalStart = null;
+          syncStart = DateTime(2018);
+          updateProgress(
+            'TiDB 暂无${dataset.includesCheckins && latestCheckinAt == null ? '打卡记录' : '月报'}，'
+            '增量将补齐历史${dataset.label}…',
+          );
         }
       }
       userIds = await _resolveAnalyticsUserIds(userIds);
@@ -1610,6 +1643,7 @@ class _CheckinPageState extends State<CheckinPage> {
         userIds: userIds,
         startAt: incrementalStart,
         mode: mode,
+        dataset: dataset,
         onProgress: (progress) {
           updateProgress(progress.message);
         },
@@ -1646,6 +1680,7 @@ class _CheckinPageState extends State<CheckinPage> {
         '${mode == AttendanceSyncMode.full ? '全量' : '增量'}同步完成：'
         '${result.userCount} 名成员，'
         '${result.checkinRecordCount} 条明细，'
+        '${result.reportCount} 份月报，'
         '${result.windowCount} 个周期',
       );
       return true;
@@ -1690,6 +1725,7 @@ class _CheckinPageState extends State<CheckinPage> {
           : AttendanceSyncMode.incremental;
       final success = await _syncAllData(
         mode,
+        dataset: AttendanceSyncDataset.all,
         onProgress: (message) => lastMessage = message,
       );
       return SyncApiExecution(
@@ -1713,12 +1749,12 @@ class _CheckinPageState extends State<CheckinPage> {
     required Set<String> userIds,
   }) {
     return switch (_mode) {
-      _WorkspaceMode.monthly => database.loadRawMonthlySummary(
+      _WorkspaceMode.monthly => database.loadMonthlySummary(
         firstMonth: start,
         lastMonth: end,
         userIds: userIds,
       ),
-      _WorkspaceMode.summary => database.loadRawYearSummary(
+      _WorkspaceMode.summary => database.loadSummary(
         firstYear: start.year,
         lastYear: end.year,
         userIds: userIds,
@@ -1798,8 +1834,8 @@ class _CheckinPageState extends State<CheckinPage> {
         builder: (_) => SettingsPage(
           config: widget.config,
           database: _database,
-          onSync: (mode, onProgress) {
-            return _syncAllData(mode, onProgress: onProgress);
+          onSync: (mode, dataset, onProgress) {
+            return _syncAllData(mode, dataset: dataset, onProgress: onProgress);
           },
           onCheckWeCom: _apiClient.checkConnection,
           syncApiServer: _syncApiServer,
@@ -1825,7 +1861,7 @@ class _CheckinPageState extends State<CheckinPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的打卡记录，'
+                    '全量获取会重新拉取全部成员从 2018-01 至当前月份的打卡记录和月报，'
                     '耗时较长，执行期间不能关闭进度窗口或离开页面。',
                     style: TextStyle(height: 1.55),
                   ),
@@ -1878,11 +1914,14 @@ class _CheckinPageState extends State<CheckinPage> {
     await Future<void>.delayed(const Duration(milliseconds: 350));
     controller.dispose();
     if (confirmed == true && mounted) {
-      await _runSyncMode(AttendanceSyncMode.full);
+      await _runSyncMode(AttendanceSyncMode.full, AttendanceSyncDataset.all);
     }
   }
 
-  Future<void> _runSyncMode(AttendanceSyncMode mode) async {
+  Future<void> _runSyncMode(
+    AttendanceSyncMode mode,
+    AttendanceSyncDataset dataset,
+  ) async {
     final progress = ValueNotifier<String>(
       mode == AttendanceSyncMode.full ? '正在准备全量获取…' : '正在准备增量获取…',
     );
@@ -1894,7 +1933,7 @@ class _CheckinPageState extends State<CheckinPage> {
         canPop: false,
         child: AlertDialog(
           title: Text(
-            mode == AttendanceSyncMode.full ? '正在全量获取打卡记录' : '正在增量获取打卡记录',
+            mode == AttendanceSyncMode.full ? '正在全量获取打卡与月报' : '正在增量获取打卡与月报',
           ),
           content: SizedBox(
             width: 500,
@@ -1936,6 +1975,7 @@ class _CheckinPageState extends State<CheckinPage> {
     await Future<void>.delayed(const Duration(milliseconds: 80));
     final succeeded = await _syncAllData(
       mode,
+      dataset: dataset,
       onProgress: (message) => progress.value = message,
     );
     await Future<void>.delayed(const Duration(milliseconds: 650));
@@ -1949,7 +1989,7 @@ class _CheckinPageState extends State<CheckinPage> {
           content: Text(
             succeeded
                 ? '${mode == AttendanceSyncMode.full ? '全量' : '增量'}获取已完成'
-                : '打卡记录获取失败，请查看页面错误提示',
+                : '打卡与月报获取失败，请查看页面错误提示',
           ),
         ),
       );

@@ -172,6 +172,58 @@ List<AttendanceSyncWindow> buildAttendanceSyncWindows(
   return windows;
 }
 
+List<AttendanceSyncWindow> buildAttendanceReportSyncWindows(
+  DateTime firstMonth,
+  DateTime lastMonth, {
+  DateTime? startAt,
+}) {
+  final selectedStart = startAt == null
+      ? DateTime(firstMonth.year, firstMonth.month)
+      : DateTime(startAt.year, startAt.month);
+  final selectedEnd = DateTime(lastMonth.year, lastMonth.month + 1);
+  final windows = <AttendanceSyncWindow>[];
+
+  for (var year = selectedStart.year; year <= lastMonth.year; year++) {
+    for (var month = 1; month <= 12; month++) {
+      final monthStart = DateTime(year, month);
+      if (!monthStart.isBefore(selectedEnd)) {
+        break;
+      }
+      final monthEnd = DateTime(year, month + 1);
+      final clippedStart = monthStart.isBefore(selectedStart)
+          ? selectedStart
+          : monthStart;
+      final clippedEnd = monthEnd.isAfter(selectedEnd) ? selectedEnd : monthEnd;
+      if (clippedStart.isBefore(clippedEnd)) {
+        windows.add(
+          AttendanceSyncWindow(
+            year: year,
+            start: clippedStart,
+            endExclusive: clippedEnd,
+          ),
+        );
+      }
+    }
+  }
+  return windows;
+}
+
+DateTime attendanceHalfMonthStart(DateTime value) {
+  return DateTime(value.year, value.month, value.day >= 16 ? 16 : 1);
+}
+
+DateTime? resolveAttendanceIncrementalStart({
+  required DateTime? latestCheckinAt,
+  required DateTime? latestReportAt,
+}) {
+  if (latestCheckinAt == null || latestReportAt == null) {
+    return null;
+  }
+  final checkinStart = attendanceHalfMonthStart(latestCheckinAt);
+  final reportStart = attendanceHalfMonthStart(latestReportAt);
+  return checkinStart.isBefore(reportStart) ? checkinStart : reportStart;
+}
+
 class AttendanceSummaryBuilder {
   final Map<String, _AttendanceAccumulator> _rows = {};
 
@@ -306,6 +358,7 @@ class _AttendanceAccumulator {
     _add(AttendanceMetric.expectedDays, summary.workDays);
     _add(AttendanceMetric.restDays, summary.restDays);
     _add(AttendanceMetric.regularDays, summary.regularDays);
+    _add(AttendanceMetric.normalAttendanceDays, summary.regularDays);
     _add(AttendanceMetric.exceptionDays, summary.exceptionDays);
     _add(
       AttendanceMetric.standardWorkHours,

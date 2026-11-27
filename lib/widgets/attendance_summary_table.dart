@@ -12,6 +12,7 @@ class AttendanceSummaryTable extends StatefulWidget {
     this.showSourceRecordColumn = false,
     this.visibleMetrics,
     this.query = '',
+    this.rawCheckinSource = false,
   });
 
   final List<AttendanceSummaryRow> rows;
@@ -20,6 +21,7 @@ class AttendanceSummaryTable extends StatefulWidget {
   final bool showSourceRecordColumn;
   final List<AttendanceMetric>? visibleMetrics;
   final String query;
+  final bool rawCheckinSource;
 
   @override
   State<AttendanceSummaryTable> createState() => _AttendanceSummaryTableState();
@@ -51,10 +53,14 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          '实际出勤天数按真实上下班打卡的唯一日期计算，已排除企业微信标记为'
-          '“未打卡”的排班占位记录；原始接口不含完整排班，因此不推算应出勤天数。'
-          '点击姓名可查看全部 SQL 统计明细。',
+        Text(
+          widget.rawCheckinSource
+              ? '历史范围按企业微信月报口径从原始打卡重新计算：排班日期计入应出勤，'
+                    '真实上下班打卡计入实际出勤，未打卡占位不计入实际出勤。'
+                    '点击姓名可查看全部 SQL 统计明细。'
+              : '应出勤、正常天数、异常和实际工时取自企业微信月报；实际出勤天数'
+                    '取自真实上下班打卡日期，并排除“未打卡”排班占位记录。'
+                    '点击姓名可查看全部 SQL 统计明细。',
           style: TospinoHrText.meta,
         ),
         const SizedBox(height: 14),
@@ -156,6 +162,7 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
   static const _compactMetrics = [
     AttendanceMetric.checkinRecordCount,
     AttendanceMetric.attendanceDays,
+    AttendanceMetric.expectedDays,
     AttendanceMetric.normalAttendanceDays,
     AttendanceMetric.exceptionDays,
     AttendanceMetric.regularWorkHours,
@@ -167,6 +174,7 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
   static const _sqlDetailMetrics = [
     AttendanceMetric.checkinRecordCount,
     AttendanceMetric.attendanceDays,
+    AttendanceMetric.expectedDays,
     AttendanceMetric.normalAttendanceDays,
     AttendanceMetric.exceptionDays,
     AttendanceMetric.exceptionCount,

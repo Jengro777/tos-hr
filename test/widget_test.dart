@@ -24,7 +24,7 @@ void main() {
 
     expect(find.text('Tospino-HR'), findsOneWidget);
     expect(find.text('企业微信配置尚未完成'), findsOneWidget);
-    expect(find.text('查询本地记录'), findsOneWidget);
+    expect(find.text('查询 TiDB 记录'), findsOneWidget);
   });
 
   testWidgets('shows all three report modes on a phone-width layout', (
@@ -51,35 +51,38 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('打卡明细'), findsOneWidget);
-    expect(find.text('月度汇总'), findsOneWidget);
-    expect(find.text('分年汇总'), findsOneWidget);
+    expect(find.text('月报'), findsOneWidget);
+    expect(find.text('年报'), findsOneWidget);
     expect(find.text('历史汇总'), findsOneWidget);
-    await tester.tap(find.text('月度汇总'));
+    await tester.tap(find.text('月报'));
     await tester.pumpAndSettle();
     expect(find.byType(DropdownButtonFormField<int>), findsNWidgets(2));
+    expect(find.text('查看月报'), findsOneWidget);
     expect(find.text('成员 UserID'), findsNothing);
-    await tester.tap(find.text('分年汇总'));
+    await tester.tap(find.text('年报'));
     await tester.pumpAndSettle();
     expect(find.byType(DropdownButtonFormField<int>), findsOneWidget);
     expect(find.text('成员 UserID'), findsNothing);
-    expect(find.text('查看本地汇总'), findsOneWidget);
+    expect(find.text('查看年报'), findsOneWidget);
     expect(find.text('成员筛选'), findsOneWidget);
     expect(find.textContaining('动态获取'), findsNothing);
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
     expect(find.text('连接状态'), findsOneWidget);
-    expect(find.text('TiDB'), findsOneWidget);
+    expect(find.text('TiDB'), findsWidgets);
     expect(find.text('企业微信'), findsOneWidget);
     expect(find.textContaining('测试连接'), findsNWidgets(2));
     expect(find.text('同步 API'), findsOneWidget);
     expect(find.text('数据库地址'), findsOneWidget);
     expect(find.text('AgentId'), findsOneWidget);
     expect(find.text('打卡 Secret'), findsOneWidget);
-    expect(find.text('全量获取覆盖打卡记录'), findsOneWidget);
     expect(find.text('增量获取打卡记录'), findsOneWidget);
-    await tester.ensureVisible(find.text('全量获取覆盖打卡记录'));
+    expect(find.text('增量获取月报'), findsOneWidget);
+    expect(find.text('增量同步全部数据'), findsOneWidget);
+    expect(find.text('全量覆盖全部数据'), findsOneWidget);
+    await tester.ensureVisible(find.text('全量覆盖全部数据'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('全量获取覆盖打卡记录'));
+    await tester.tap(find.text('全量覆盖全部数据'));
     await tester.pumpAndSettle();
     expect(find.text('我已知晓全量获取时间较长，期间不可离开页面'), findsOneWidget);
     final confirmFinder = find.widgetWithText(FilledButton, '开始全量获取');
@@ -96,7 +99,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('返回'));
     await tester.pumpAndSettle();
-    await tester.drag(find.text('分年汇总'), const Offset(-160, 0));
+    await tester.drag(find.text('年报'), const Offset(-160, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.text('历史汇总'));
     await tester.pumpAndSettle();
@@ -126,7 +129,7 @@ void main() {
         initialAuthenticated: true,
       ),
     );
-    await tester.tap(find.text('查询本地记录'));
+    await tester.tap(find.text('查询 TiDB 记录'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('数据库不可用'), findsWidgets);

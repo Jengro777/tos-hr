@@ -2,6 +2,20 @@ import 'checkin_record.dart';
 
 enum AttendanceSyncMode { full, incremental }
 
+enum AttendanceSyncDataset { checkins, reports, all }
+
+extension AttendanceSyncDatasetInfo on AttendanceSyncDataset {
+  bool get includesCheckins => this != AttendanceSyncDataset.reports;
+
+  bool get includesReports => this != AttendanceSyncDataset.checkins;
+
+  String get label => switch (this) {
+    AttendanceSyncDataset.checkins => '打卡记录',
+    AttendanceSyncDataset.reports => '月报',
+    AttendanceSyncDataset.all => '打卡记录与月报',
+  };
+}
+
 class AttendanceDateBounds {
   const AttendanceDateBounds({required this.firstDate, required this.lastDate});
 

@@ -20,12 +20,13 @@ void main() {
 
       final stats = await database.loadStats();
       final bounds = await database.loadCheckinDateBounds();
+      final latestReportAt = await database.loadLatestMonthlyReportTime();
       final now = DateTime.now();
-      final monthly = await database.loadRawMonthlySummary(
+      final monthly = await database.loadMonthlySummary(
         firstMonth: DateTime(now.year, now.month),
         lastMonth: DateTime(now.year, now.month),
       );
-      final yearly = await database.loadRawYearSummary(
+      final yearly = await database.loadSummary(
         firstYear: now.year,
         lastYear: now.year,
       );
@@ -44,6 +45,8 @@ void main() {
       );
 
       expect(stats.checkinRecordCount, greaterThan(0));
+      expect(stats.monthlyReportCount, greaterThan(0));
+      expect(latestReportAt, isNotNull);
       expect(monthly, isNotEmpty);
       expect(yearly, isNotEmpty);
       expect(histories, isNotEmpty);

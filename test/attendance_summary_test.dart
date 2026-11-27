@@ -101,6 +101,47 @@ void main() {
     expect(windows, hasLength(1));
     expect(windows.single.label, '2026-11-16 至 2026-11-30');
   });
+
+  test('builds one monthly report window per natural month', () {
+    final windows = buildAttendanceReportSyncWindows(
+      DateTime(2025, 11),
+      DateTime(2026, 1),
+      startAt: DateTime(2025, 11, 20),
+    );
+
+    expect(windows.map((window) => window.label), [
+      '2025-11-01 至 2025-11-30',
+      '2025-12-01 至 2025-12-31',
+      '2026-01-01 至 2026-01-31',
+    ]);
+  });
+
+  test(
+    'incremental start uses the earlier latest check-in or report window',
+    () {
+      expect(
+        resolveAttendanceIncrementalStart(
+          latestCheckinAt: DateTime(2026, 11, 27, 18),
+          latestReportAt: DateTime(2026, 10, 31),
+        ),
+        DateTime(2026, 10, 16),
+      );
+      expect(
+        resolveAttendanceIncrementalStart(
+          latestCheckinAt: DateTime(2026, 11, 3),
+          latestReportAt: DateTime(2026, 11, 20),
+        ),
+        DateTime(2026, 11, 1),
+      );
+      expect(
+        resolveAttendanceIncrementalStart(
+          latestCheckinAt: DateTime(2026, 11, 27),
+          latestReportAt: null,
+        ),
+        isNull,
+      );
+    },
+  );
 }
 
 MonthlyReport _report({
