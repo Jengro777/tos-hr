@@ -1,0 +1,13 @@
+wecom:
+  corp_id: 请填写企业ID
+  agent_id: 请填写AgentId
+  secret: 请填写应用Secret
+
+database:
+  host: host
+  port: 4000
+  username: 请填写TiDB用户名
+  password: 请填写TiDB密码
+  database: 请填写数据库名
+  ssl_verify: true
+  ssl_ca_file: client-cert.pem
