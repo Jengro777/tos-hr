@@ -325,20 +325,23 @@ async function rawSummary(connection, payload, period) {
     : period === "month"
       ? "SUBSTR(record_date, 1, 7)"
       : "''";
+  const actualWorkPunch = `checkin_type IN ('上班打卡', '下班打卡')
+    AND exception_type NOT LIKE '%未打卡%'`;
   const args = [`${payload.start_date}`, `${payload.end_date}`, ...userIds];
   const rows = (await execute(
     connection,
     `WITH attendance_daily AS (
        SELECT user_id, record_date, ${periodExpression} AS period,
          MAX(group_name) AS group_name,
-         COUNT(*) AS record_count,
-         SUM(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
-                  THEN 1 ELSE 0 END) AS work_count,
-         MAX(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+         SUM(CASE WHEN exception_type NOT LIKE '%未打卡%'
+                  THEN 1 ELSE 0 END) AS record_count,
+         SUM(CASE WHEN ${actualWorkPunch}
+                  THEN 1 ELSE 0 END) AS actual_work_count,
+         MAX(CASE WHEN ${actualWorkPunch}
                   THEN 1 ELSE 0 END) AS attended_day,
-         MIN(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+         MIN(CASE WHEN ${actualWorkPunch}
                   THEN checkin_at END) AS first_work_at,
-         MAX(CASE WHEN checkin_type IN ('上班打卡', '下班打卡')
+         MAX(CASE WHEN ${actualWorkPunch}
                   THEN checkin_at END) AS last_work_at,
          SUM(CASE WHEN exception_type <> '' THEN 1 ELSE 0 END)
            AS exception_count,
@@ -359,7 +362,7 @@ async function rawSummary(connection, payload, period) {
      SELECT user_id, period, MAX(group_name) AS group_name,
        SUM(record_count) AS record_count,
        SUM(attended_day) AS attendance_days,
-       SUM(CASE WHEN work_count > 0 AND exception_count = 0
+       SUM(CASE WHEN actual_work_count > 0 AND exception_count = 0
                 THEN 1 ELSE 0 END) AS normal_attendance_days,
        SUM(COALESCE(last_work_at - first_work_at, 0)) AS work_ms,
        SUM(exception_count) AS exception_count,
@@ -457,10 +460,15 @@ async function rawSummary(connection, payload, period) {
 
 async function loadDailySummary(connection, payload) {
   const userIds = uniqueStrings(payload.user_ids);
+  const actualWorkPunch = `checkin_type IN ('上班打卡', '下班打卡')
+    AND exception_type NOT LIKE '%未打卡%'`;
   const rows = (await execute(
     connection,
-    `SELECT user_id, COUNT(*) AS record_count,
-       COUNT(DISTINCT record_date) AS attendance_days,
+    `SELECT user_id,
+       SUM(CASE WHEN exception_type NOT LIKE '%未打卡%'
+                THEN 1 ELSE 0 END) AS record_count,
+       COUNT(DISTINCT CASE WHEN ${actualWorkPunch}
+                           THEN record_date END) AS attendance_days,
        SUM(CASE WHEN exception_type <> '' THEN 1 ELSE 0 END)
          AS exception_count,
        SUM(CASE WHEN exception_type <> '' THEN 1 ELSE 0 END) AS exception_days,

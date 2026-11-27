@@ -98,7 +98,7 @@ void main() {
     expect(allTimeRows.single.valueOf(AttendanceMetric.expectedDays), 19);
     expect(allTimeRows.single.valueOf(AttendanceMetric.checkinRecordCount), 3);
     expect(dailyRows.single.valueOf(AttendanceMetric.checkinRecordCount), 3);
-    expect(dailyRows.single.valueOf(AttendanceMetric.attendanceDays), 2);
+    expect(dailyRows.single.valueOf(AttendanceMetric.attendanceDays), 1);
     expect(bounds?.firstDate, DateTime(2026, 11, 2));
     expect(bounds?.lastDate, DateTime(2026, 11, 3));
     expect(recordPage.totalCount, 3);
@@ -141,6 +141,79 @@ void main() {
 
     expect(rows.single.sourceRecordCount, 1);
     expect(rows.single.valueOf(AttendanceMetric.expectedDays), 8);
+  });
+
+  test('excludes no-check-in placeholders from monthly yearly and history summaries', () async {
+    final database = AttendanceDatabase(
+      factory: databaseFactoryFfiNoIsolate,
+      databasePath: inMemoryDatabasePath,
+    );
+    addTearDown(database.close);
+
+    await database.saveCheckinRecords([
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '上班打卡',
+        exceptionType: '未打卡',
+        checkinTime: DateTime(2026, 11, 2, 9),
+      ),
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '下班打卡',
+        exceptionType: '未打卡',
+        checkinTime: DateTime(2026, 11, 2, 18),
+      ),
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '上班打卡',
+        checkinTime: DateTime(2026, 11, 3, 9),
+      ),
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '下班打卡',
+        checkinTime: DateTime(2026, 11, 3, 18),
+      ),
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '上班打卡',
+        checkinTime: DateTime(2026, 11, 4, 9),
+      ),
+      CheckinRecord(
+        userId: 'PM07',
+        checkinType: '下班打卡',
+        exceptionType: '未打卡',
+        checkinTime: DateTime(2026, 11, 4, 18),
+      ),
+    ]);
+
+    final summaries = [
+      await database.loadRawMonthlySummary(
+        firstMonth: DateTime(2026, 11),
+        lastMonth: DateTime(2026, 11),
+        userIds: const {'PM07'},
+      ),
+      await database.loadRawYearSummary(
+        firstYear: 2026,
+        lastYear: 2026,
+        userIds: const {'PM07'},
+      ),
+      await database.loadRawAllTimeSummary(
+        startDate: DateTime(2026, 11, 1),
+        endDate: DateTime(2026, 11, 30),
+        userIds: const {'PM07'},
+      ),
+    ];
+
+    for (final rows in summaries) {
+      final row = rows.single;
+      expect(row.valueOf(AttendanceMetric.attendanceDays), 2);
+      expect(row.valueOf(AttendanceMetric.normalAttendanceDays), 1);
+      expect(row.valueOf(AttendanceMetric.checkinRecordCount), 3);
+      expect(row.valueOf(AttendanceMetric.exceptionCount), 3);
+      expect(row.valueOf(AttendanceMetric.exceptionDays), 2);
+      expect(row.valueOf(AttendanceMetric.notCheckedInCount), 3);
+      expect(row.valueOf(AttendanceMetric.regularWorkHours), 9);
+    }
   });
 
   test(

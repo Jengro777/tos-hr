@@ -344,7 +344,9 @@ class AttendanceOrmStore {
           'user_id': daily.userId,
           'record_count': _sumOf(daily.recordCount),
           'attendance_days': SqlExpression(
-            'COUNT(DISTINCT ${daily.recordDate.toSqlIdentifier()})',
+            'COUNT(DISTINCT CASE WHEN '
+            '${daily.attendedDay.toSqlIdentifier()} > 0 '
+            'THEN ${daily.recordDate.toSqlIdentifier()} END)',
           ),
           'exception_count': _sumOf(daily.exceptionCount),
           'exception_days': SqlExpression(
@@ -693,7 +695,7 @@ class AttendanceOrmStore {
           'attendance_days': _sumOf(daily.attendedDay),
           'normal_attendance_days': SqlExpression(
             'SUM(CASE WHEN '
-            '${daily.workCount.toSqlIdentifier()} > 0 AND '
+            '${daily.actualWorkCount.toSqlIdentifier()} > 0 AND '
             '${daily.exceptionCount.toSqlIdentifier()} = 0 '
             'THEN 1 ELSE 0 END)',
           ),
@@ -742,6 +744,9 @@ class AttendanceOrmStore {
     final recordDate = tables.checkins.recordDate.toSqlIdentifier();
     final checkinType = tables.checkins.checkinType.toSqlIdentifier();
     final exceptionType = tables.checkins.exceptionType.toSqlIdentifier();
+    final actualWorkPunch =
+        "($checkinType IN ('上班打卡', '下班打卡') "
+        "AND $exceptionType NOT LIKE '%未打卡%')";
     return database
         .select({
           'user_id': tables.checkins.userId,
@@ -752,21 +757,17 @@ class AttendanceOrmStore {
             _SummaryPeriod.all => const SqlExpression("''"),
           },
           'group_name': max(tables.checkins.groupName),
-          'record_count': countAll(),
-          'work_count': _conditionalSum("$checkinType IN ('上班打卡', '下班打卡')"),
+          'record_count': _conditionalSum("$exceptionType NOT LIKE '%未打卡%'"),
+          'actual_work_count': _conditionalSum(actualWorkPunch),
           'attended_day': SqlExpression(
-            'MAX(CASE WHEN '
-            "$checkinType IN ('上班打卡', '下班打卡') "
-            'THEN 1 ELSE 0 END)',
+            'MAX(CASE WHEN $actualWorkPunch THEN 1 ELSE 0 END)',
           ),
           'first_work_at': SqlExpression(
-            'MIN(CASE WHEN '
-            "$checkinType IN ('上班打卡', '下班打卡') "
+            'MIN(CASE WHEN $actualWorkPunch '
             'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
           ),
           'last_work_at': SqlExpression(
-            'MAX(CASE WHEN '
-            "$checkinType IN ('上班打卡', '下班打卡') "
+            'MAX(CASE WHEN $actualWorkPunch '
             'THEN ${tables.checkins.checkinAt.toSqlIdentifier()} END)',
           ),
           'exception_count': _conditionalSum("$exceptionType <> ''"),
@@ -1083,7 +1084,10 @@ class _DailyColumns {
   final period = _CteColumnRef<String>('attendance_daily', 'period');
   final groupName = _CteColumnRef<String>('attendance_daily', 'group_name');
   final recordCount = _CteColumnRef<int>('attendance_daily', 'record_count');
-  final workCount = _CteColumnRef<int>('attendance_daily', 'work_count');
+  final actualWorkCount = _CteColumnRef<int>(
+    'attendance_daily',
+    'actual_work_count',
+  );
   final attendedDay = _CteColumnRef<int>('attendance_daily', 'attended_day');
   final firstWorkAt = _CteColumnRef<int>('attendance_daily', 'first_work_at');
   final lastWorkAt = _CteColumnRef<int>('attendance_daily', 'last_work_at');

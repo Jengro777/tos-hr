@@ -52,8 +52,9 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Text(
-          '实际出勤天数按上下班打卡的唯一日期计算；原始接口不含完整排班，'
-          '因此不推算应出勤天数。点击姓名可查看全部 SQL 统计明细。',
+          '实际出勤天数按真实上下班打卡的唯一日期计算，已排除企业微信标记为'
+          '“未打卡”的排班占位记录；原始接口不含完整排班，因此不推算应出勤天数。'
+          '点击姓名可查看全部 SQL 统计明细。',
           style: TospinoHrText.meta,
         ),
         const SizedBox(height: 14),
