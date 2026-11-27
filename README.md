@@ -169,6 +169,8 @@ Actions 页面会分别显示 `Build Web` 和 `Deploy Cloudflare` 两个 Job。
    - `CLOUDFLARE_API_TOKEN`（必需）
    - `CLOUDFLARE_ACCOUNT_ID`（Token 可访问多个账号时必需）
 
+粘贴 `CLOUDFLARE_API_TOKEN` 时只填写 Token 本身，不要包含 `Bearer`、引号或换行。
+
 工作流会自动检查 Pages 项目 `tos-hr`，不存在时创建项目并将生产分支设置为
 `main`；项目已存在时直接使用。未配置 `CLOUDFLARE_ACCOUNT_ID` 时，如果 Token
 只能访问一个账号，工作流会自动读取该账号 ID。配置值格式无效时，工作流也会

@@ -74,10 +74,23 @@ jobs:
             printf "%s" "${CLOUDFLARE_ACCOUNT_ID:-}" |
               tr -d '[:space:]'
           )"
-          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+          api_token="$(
+            printf "%s" "${CLOUDFLARE_API_TOKEN:-}" |
+              tr -d '[:space:]"'
+          )"
+          if [[ -z "${api_token}" ]]; then
             echo "::error title=Cloudflare API token missing::Configure the CLOUDFLARE_API_TOKEN Actions secret."
             exit 1
           fi
+
+          if [[ "${api_token:0:6}" == [Bb][Ee][Aa][Rr][Ee][Rr] ]]; then
+            api_token="${api_token:6}"
+          fi
+          if [[ ! "${api_token}" =~ ^[A-Za-z0-9_-]{20,}$ ]]; then
+            echo "::error title=Invalid Cloudflare API token format::Paste only the API token value, without Bearer, quotes, or whitespace."
+            exit 1
+          fi
+          echo "::add-mask::${api_token}"
 
           if [[ -n "${account_id}" && ! "${account_id}" =~ ^[0-9a-fA-F]{32}$ ]]; then
             echo "::warning title=Invalid Cloudflare account ID::Ignoring the invalid CLOUDFLARE_ACCOUNT_ID secret and resolving it from the API token."
@@ -91,7 +104,7 @@ jobs:
               curl --silent --show-error \
                 --output "${response_file}" \
                 --write-out "%{http_code}" \
-                --header "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                --header "Authorization: Bearer ${api_token}" \
                 "https://api.cloudflare.com/client/v4/accounts"
             )"
 
@@ -118,10 +131,11 @@ jobs:
 
           echo "Using Cloudflare account ${account_id}."
           echo "account-id=${account_id}" >> "${GITHUB_OUTPUT}"
+          echo "api-token=${api_token}" >> "${GITHUB_OUTPUT}"
 
       - name: Ensure Cloudflare Pages project exists
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.cloudflare.outputs.api-token }}
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.cloudflare.outputs.account-id }}
         run: |
           set -euo pipefail
@@ -160,7 +174,7 @@ jobs:
         id: deploy
         uses: cloudflare/wrangler-action@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ steps.cloudflare.outputs.api-token }}
           accountId: ${{ steps.cloudflare.outputs.account-id }}
           command: >-
             pages deploy build/web
