@@ -162,12 +162,14 @@ Cloudflare Pages 项目 `tos-hr`。部署归属 `main` 分支，因此会更新�
 
 首次使用前需要：
 
-1. 在 Cloudflare 创建名为 `tos-hr` 的 Pages 项目，并确认生产分支为 `main`。
-2. 创建具有“Account > Cloudflare Pages > Edit”权限的 Cloudflare API Token。
-3. 在 GitHub 仓库的 `Settings > Secrets and variables > Actions` 中添加：
+1. 创建具有“Account > Cloudflare Pages > Edit”权限的 Cloudflare API Token。
+2. 在 GitHub 仓库的 `Settings > Secrets and variables > Actions` 中添加：
 
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
+
+工作流会自动检查 Pages 项目 `tos-hr`，不存在时创建项目并将生产分支设置为
+`main`；项目已存在时直接使用。
 
 发布新版本的流程：
 
@@ -177,6 +179,8 @@ Cloudflare Pages 项目 `tos-hr`。部署归属 `main` 分支，因此会更新�
 
 也可以在 Actions 页面手动运行 `Deploy to Cloudflare Pages`，用于重新部署当前分支。
 
+## 安全说明
 
+企业微信官方要求 `access_token` 由服务端获取并保存，不应返回给前端。当前实现按客户端直连需求工作，但 Secret 会被编译进应用包，存在被提取的风险，只建议用于内部工具或开发调试。
 
 生产环境应在自有服务端代理企业微信接口：Flutter 只调用业务后端，Secret 和 `access_token` 始终留在服务端。若需要部署 Flutter Web，也应通过服务端代理规避浏览器跨域限制。
