@@ -61,6 +61,17 @@ abstract class AttendanceDatabase {
     Set<String> userIds = const {},
   }) => _unsupported();
 
+  Future<MonthlyReport?> loadMonthlyReport({
+    required String userId,
+    required DateTime month,
+  }) => _unsupported();
+
+  Future<List<MonthlyReportRecord>> loadMonthlyReports({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) => _unsupported();
+
   Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
     required DateTime firstMonth,
     required DateTime lastMonth,

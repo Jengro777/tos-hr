@@ -266,6 +266,27 @@ class TiDbAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<MonthlyReport?> loadMonthlyReport({
+    required String userId,
+    required DateTime month,
+  }) async {
+    return (await _orm).loadMonthlyReport(userId: userId, month: month);
+  }
+
+  @override
+  Future<List<MonthlyReportRecord>> loadMonthlyReports({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    return (await _orm).loadMonthlyReports(
+      firstMonth: firstMonth,
+      lastMonth: lastMonth,
+      userIds: userIds,
+    );
+  }
+
+  @override
   Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
     required DateTime firstMonth,
     required DateTime lastMonth,

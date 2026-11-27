@@ -610,6 +610,91 @@ class AttendanceOrmStore {
     ];
   }
 
+  Future<MonthlyReport?> loadMonthlyReport({
+    required String userId,
+    required DateTime month,
+  }) async {
+    final start = DateTime(month.year, month.month);
+    final end = DateTime(month.year, month.month + 1);
+    final row = await database
+        .select([tables.monthlyReports.reportJson])
+        .from(tables.monthlyReports)
+        .where(
+          and([
+            eq(tables.monthlyReports.userId, userId),
+            _atLeastInt(
+              tables.monthlyReports.periodStart,
+              start.millisecondsSinceEpoch,
+            ),
+            _lessThanInt(
+              tables.monthlyReports.periodStart,
+              end.millisecondsSinceEpoch,
+            ),
+          ]),
+        )
+        .orderBy(tables.monthlyReports.periodStart, Order.desc)
+        .first();
+    return row == null ? null : _monthlyReportFromRow(row);
+  }
+
+  Future<List<MonthlyReportRecord>> loadMonthlyReports({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    final start = DateTime(firstMonth.year, firstMonth.month);
+    final end = DateTime(lastMonth.year, lastMonth.month + 1);
+    final rows = await database
+        .select([
+          tables.monthlyReports.periodStart,
+          tables.monthlyReports.periodEndExclusive,
+          tables.monthlyReports.reportJson,
+        ])
+        .from(tables.monthlyReports)
+        .where(
+          and([
+            _atLeastInt(
+              tables.monthlyReports.periodStart,
+              start.millisecondsSinceEpoch,
+            ),
+            _lessThanInt(
+              tables.monthlyReports.periodStart,
+              end.millisecondsSinceEpoch,
+            ),
+            if (userIds.isNotEmpty)
+              inArray(
+                tables.monthlyReports.userId,
+                userIds.toList(growable: false),
+              ),
+          ]),
+        )
+        .orderBy(tables.monthlyReports.periodStart);
+    final records = <MonthlyReportRecord>[];
+    for (final row in rows) {
+      final report = _monthlyReportFromRow(row);
+      if (report == null) {
+        continue;
+      }
+      final periodStart = DateTime.fromMillisecondsSinceEpoch(
+        _intValue(row.read(tables.monthlyReports.periodStart)),
+      );
+      final periodEnd = DateTime.fromMillisecondsSinceEpoch(
+        _intValue(row.read(tables.monthlyReports.periodEndExclusive)),
+      );
+      if (!isCompleteMonthlyReportWindow(periodStart, periodEnd)) {
+        continue;
+      }
+      records.add(
+        MonthlyReportRecord(
+          periodStart: periodStart,
+          periodEndExclusive: periodEnd,
+          report: report,
+        ),
+      );
+    }
+    return records;
+  }
+
   Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
     required DateTime firstMonth,
     required DateTime lastMonth,
@@ -660,6 +745,7 @@ class AttendanceOrmStore {
         .select([
           tables.monthlyReports.userId,
           tables.monthlyReports.periodStart,
+          tables.monthlyReports.periodEndExclusive,
         ])
         .from(tables.monthlyReports)
         .where(
@@ -679,11 +765,20 @@ class AttendanceOrmStore {
               ),
           ]),
         );
-    return {
-      for (final row in rows)
-        '${row.read(tables.monthlyReports.periodStart)}|'
-            '${row.read(tables.monthlyReports.userId)}',
-    };
+    final keys = <String>{};
+    for (final row in rows) {
+      final startMs = _intValue(row.read(tables.monthlyReports.periodStart));
+      final endMs = _intValue(
+        row.read(tables.monthlyReports.periodEndExclusive),
+      );
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+      final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+      if (!isCompleteMonthlyReportWindow(start, end)) {
+        continue;
+      }
+      keys.add('$startMs|${row.read(tables.monthlyReports.userId)}');
+    }
+    return keys;
   }
 
   Future<List<AttendanceSummaryRow>> _loadRawSummary({

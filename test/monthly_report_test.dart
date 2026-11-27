@@ -40,6 +40,7 @@ void main() {
         'restdays_over_sec': 3600,
         'holidays_over_sec': 0,
       },
+      'future_field': 'kept',
     });
 
     expect(report.displayName, '张三');
@@ -53,6 +54,7 @@ void main() {
     expect(report.specialItems.first.durationText, '0.5天');
     expect(report.specialItems.last.durationText, '2小时');
     expect(report.overwork?.totalText, '2 小时 30 分钟');
+    expect(report.rawData['future_field'], 'kept');
   });
 
   test('formats work durations', () {

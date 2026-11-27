@@ -13,6 +13,8 @@ class AttendanceSummaryTable extends StatefulWidget {
     this.visibleMetrics,
     this.query = '',
     this.rawCheckinSource = false,
+    this.onMemberTap,
+    this.memberDetailHint,
   });
 
   final List<AttendanceSummaryRow> rows;
@@ -22,6 +24,8 @@ class AttendanceSummaryTable extends StatefulWidget {
   final List<AttendanceMetric>? visibleMetrics;
   final String query;
   final bool rawCheckinSource;
+  final ValueChanged<AttendanceSummaryRow>? onMemberTap;
+  final String? memberDetailHint;
 
   @override
   State<AttendanceSummaryTable> createState() => _AttendanceSummaryTableState();
@@ -58,6 +62,8 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
               ? '历史范围按企业微信月报口径从原始打卡重新计算：排班日期计入应出勤，'
                     '真实上下班打卡计入实际出勤，未打卡占位不计入实际出勤。'
                     '点击姓名可查看全部 SQL 统计明细。'
+              : widget.memberDetailHint != null
+              ? widget.memberDetailHint!
               : '应出勤、正常天数、异常和实际工时取自企业微信月报；实际出勤天数'
                     '取自真实上下班打卡日期，并排除“未打卡”排班占位记录。'
                     '点击姓名可查看全部 SQL 统计明细。',
@@ -244,7 +250,14 @@ class _AttendanceSummaryTableState extends State<AttendanceSummaryTable> {
   DataCell _memberCell(AttendanceSummaryRow row) {
     return DataCell(
       TextButton(
-        onPressed: () => _showRecordDetail(row),
+        onPressed: () {
+          final onMemberTap = widget.onMemberTap;
+          if (onMemberTap != null) {
+            onMemberTap(row);
+          } else {
+            _showRecordDetail(row);
+          }
+        },
         style: TextButton.styleFrom(
           foregroundColor: TospinoHrColors.brand,
           visualDensity: VisualDensity.compact,

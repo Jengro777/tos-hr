@@ -638,7 +638,8 @@ export async function handleDatabase(env, action, payload = {}) {
     const userIds = uniqueStrings(payload.user_ids);
     const rows = (await execute(
       connection,
-      `SELECT user_id, period_start FROM monthly_report_snapshots
+      `SELECT user_id, period_start, period_end_exclusive
+       FROM monthly_report_snapshots
        WHERE period_start >= ? AND period_start < ?${userClause(userIds)}`,
       [
         asInt(payload.first_month_ms),
@@ -646,7 +647,10 @@ export async function handleDatabase(env, action, payload = {}) {
         ...userIds,
       ],
     )).rows ?? [];
-    return rows.map((row) => `${row.period_start}|${row.user_id}`);
+    return rows.map(
+      (row) =>
+        `${row.period_start}|${row.period_end_exclusive}|${row.user_id}`,
+    );
   }
   if (action === "load_monthly_report_snapshots") {
     const userIds = uniqueStrings(payload.user_ids);
@@ -671,6 +675,27 @@ export async function handleDatabase(env, action, payload = {}) {
         ? row.report_json
         : JSON.stringify(row.report_json ?? {}),
     }));
+  }
+  if (action === "load_monthly_report") {
+    const row = (await execute(
+      connection,
+      `SELECT report_json FROM monthly_report_snapshots
+       WHERE user_id = ? AND period_start >= ? AND period_start < ?
+       ORDER BY period_start DESC LIMIT 1`,
+      [
+        `${payload.user_id ?? ""}`,
+        asInt(payload.period_start_ms),
+        asInt(payload.period_end_exclusive_ms),
+      ],
+    )).rows?.[0];
+    if (row == null) {
+      return null;
+    }
+    return {
+      report_json: typeof row.report_json === "string"
+        ? row.report_json
+        : JSON.stringify(row.report_json ?? {}),
+    };
   }
   if (action === "mark_sync_windows") {
     const userIds = uniqueStrings(payload.user_ids);

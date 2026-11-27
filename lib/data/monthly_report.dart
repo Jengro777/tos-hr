@@ -5,6 +5,7 @@ class MonthlyReport {
     this.exceptions = const [],
     this.specialItems = const [],
     this.overwork,
+    this.rawData = const {},
   });
 
   factory MonthlyReport.fromJson(Map<String, dynamic> json) {
@@ -26,6 +27,9 @@ class MonthlyReport {
               Map<String, dynamic>.from(json['overwork_info'] as Map),
             )
           : null,
+      rawData: Map<String, dynamic>.unmodifiable(
+        Map<String, dynamic>.from(json),
+      ),
     );
   }
 
@@ -34,12 +38,16 @@ class MonthlyReport {
   final List<MonthlyExceptionInfo> exceptions;
   final List<MonthlySpecialItem> specialItems;
   final MonthlyOverworkInfo? overwork;
+  final Map<String, dynamic> rawData;
 
   String get userId => baseInfo.accountId;
   String get displayName =>
       baseInfo.name.isNotEmpty ? baseInfo.name : baseInfo.accountId;
 
   Map<String, Object?> toJson() {
+    if (rawData.isNotEmpty) {
+      return rawData;
+    }
     return {
       'base_info': baseInfo.toJson(),
       'summary_info': summary.toJson(),

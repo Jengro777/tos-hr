@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tospino_hr/config/app_runtime_config.dart';
+import 'package:tospino_hr/data/attendance_storage.dart';
 import 'package:tospino_hr/data/checkin_record.dart';
 import 'package:tospino_hr/data/tidb_attendance_database.dart';
 
@@ -26,6 +27,19 @@ void main() {
         firstMonth: DateTime(now.year, now.month),
         lastMonth: DateTime(now.year, now.month),
       );
+      final monthlyDetail = monthly.isEmpty
+          ? null
+          : await database.loadMonthlyReport(
+              userId: monthly.first.userId,
+              month: DateTime(now.year, now.month),
+            );
+      final annualReports = monthly.isEmpty
+          ? const <MonthlyReportRecord>[]
+          : await database.loadMonthlyReports(
+              firstMonth: DateTime(now.year),
+              lastMonth: DateTime(now.year, 12),
+              userIds: {monthly.first.userId},
+            );
       final yearly = await database.loadSummary(
         firstYear: now.year,
         lastYear: now.year,
@@ -48,6 +62,8 @@ void main() {
       expect(stats.monthlyReportCount, greaterThan(0));
       expect(latestReportAt, isNotNull);
       expect(monthly, isNotEmpty);
+      expect(monthlyDetail, isNotNull);
+      expect(annualReports, isNotEmpty);
       expect(yearly, isNotEmpty);
       expect(histories, isNotEmpty);
       expect(page.records, isNotEmpty);

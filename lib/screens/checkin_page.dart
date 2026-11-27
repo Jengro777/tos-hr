@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -1303,6 +1305,20 @@ class _CheckinPageState extends State<CheckinPage> {
               showSourceRecordColumn: showSourceRecordColumn,
               visibleMetrics: visibleMetrics,
               rawCheckinSource: _mode == _WorkspaceMode.all,
+              onMemberTap: switch (_mode) {
+                _WorkspaceMode.monthly => _showMonthlyReportDetail,
+                _WorkspaceMode.summary => _showAnnualReportDetail,
+                _ => null,
+              },
+              memberDetailHint: switch (_mode) {
+                _WorkspaceMode.monthly =>
+                  '月报字段来自企业微信原数据；点击姓名查看基础信息、假勤统计、'
+                      '异常统计、加班数据和当月原始打卡明细。',
+                _WorkspaceMode.summary =>
+                  '年报按成员汇总各月月报；点击姓名进入年度子视图，'
+                      '查看该成员全年每月的完整月报数据。',
+                _ => null,
+              },
             ),
         ],
       ),
@@ -1766,6 +1782,152 @@ class _CheckinPageState extends State<CheckinPage> {
       ),
       _WorkspaceMode.details => Future.value(const []),
     };
+  }
+
+  Future<void> _showMonthlyReportDetail(AttendanceSummaryRow row) async {
+    final parts = row.periodLabel.split('-');
+    final year = parts.length == 2 ? int.tryParse(parts[0]) : null;
+    final month = parts.length == 2 ? int.tryParse(parts[1]) : null;
+    if (year == null || month == null || row.userId.isEmpty) {
+      _showOperationPrompt('月报详情缺少有效的月份或成员信息');
+      return;
+    }
+    _showOperationPrompt('正在加载月报详情和当月打卡记录…');
+    try {
+      final start = DateTime(year, month);
+      final end = DateTime(year, month + 1, 0);
+      final report = await _database.loadMonthlyReport(
+        userId: row.userId,
+        month: start,
+      );
+      final records = await _database.loadCheckinRecords(
+        startDate: start,
+        endDate: end,
+        userIds: {row.userId},
+        dataType: CheckinDataType.all,
+        limit: 1000,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (report == null) {
+        _showOperationPrompt('未找到该成员所选月份的月报数据');
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('${row.periodLabel} · ${report.displayName} · 月报详情'),
+          content: SizedBox(
+            width: 1040,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.78,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _MonthlyReportCard(report: report),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        const Expanded(child: _ReportSubTitle('原始打卡明细')),
+                        Text(
+                          '${records.records.length} 条',
+                          style: TospinoHrText.meta,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (records.records.isEmpty)
+                      const Text('该月份没有已同步的原始打卡记录', style: TospinoHrText.meta)
+                    else
+                      _MonthlyPunchTable(records: records.records),
+                    if (report.rawData.isNotEmpty) ...[
+                      const SizedBox(height: 14),
+                      ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        childrenPadding: const EdgeInsets.only(bottom: 10),
+                        title: const Text(
+                          '查看完整原始月报 JSON',
+                          style: TextStyle(
+                            color: TospinoHrColors.ink2,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: TospinoHrColors.surfaceMuted,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: SelectableText(
+                              const JsonEncoder.withIndent('  ')
+                                  .convert(report.rawData),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 10,
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      _showOperationPrompt('加载月报详情失败：$error');
+    }
+  }
+
+  Future<void> _showAnnualReportDetail(AttendanceSummaryRow row) async {
+    if (row.userId.isEmpty) {
+      _showOperationPrompt('年报详情缺少成员信息');
+      return;
+    }
+    _showOperationPrompt('正在加载该成员整年的月报数据…');
+    try {
+      final records = await _database.loadMonthlyReports(
+        firstMonth: DateTime(row.year),
+        lastMonth: DateTime(row.year, 12),
+        userIds: {row.userId},
+      );
+      if (!mounted) {
+        return;
+      }
+      if (records.isEmpty) {
+        _showOperationPrompt('该成员所选年份没有完整的月报数据');
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => _AnnualReportDetailPage(
+            year: row.year,
+            memberName: row.name,
+            userId: row.userId,
+            records: records,
+          ),
+        ),
+      );
+    } catch (error) {
+      _showOperationPrompt('加载年报详情失败：$error');
+    }
   }
 
   (DateTime, DateTime) _analyticsRange() {
@@ -2634,6 +2796,228 @@ class _RecordCard extends StatelessWidget {
   }
 }
 
+class _AnnualReportDetailPage extends StatelessWidget {
+  const _AnnualReportDetailPage({
+    required this.year,
+    required this.memberName,
+    required this.userId,
+    required this.records,
+  });
+
+  final int year;
+  final String memberName;
+  final String userId;
+  final List<MonthlyReportRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final sortedRecords = [...records]
+      ..sort((a, b) => a.periodStart.compareTo(b.periodStart));
+    return Scaffold(
+      backgroundColor: TospinoHrColors.background,
+      appBar: AppBar(
+        backgroundColor: TospinoHrColors.surface,
+        foregroundColor: TospinoHrColors.ink,
+        title: Text('$year 年报详情 · $memberName'),
+        centerTitle: false,
+      ),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1120),
+            child: ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: TospinoHrColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: TospinoHrColors.line),
+                  ),
+                  child: Text(
+                    '$memberName（$userId） · $year 年 · '
+                    '${sortedRecords.length} 份完整月报',
+                    style: TospinoHrText.cardTitle,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                for (final record in sortedRecords) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: TospinoHrColors.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: TospinoHrColors.line),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              '${record.periodStart.month} 月',
+                              style: TospinoHrText.cardTitle,
+                            ),
+                            const Spacer(),
+                            _MiniBadge(
+                              text: record.report.baseInfo.groupName,
+                              color: TospinoHrColors.ink2,
+                              background: TospinoHrColors.surfaceMuted,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _MonthlyReportCard(report: record.report),
+                        if (record.report.rawData.isNotEmpty)
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: const EdgeInsets.only(bottom: 8),
+                            title: const Text(
+                              '查看该月完整原始 JSON',
+                              style: TextStyle(
+                                color: TospinoHrColors.ink3,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: TospinoHrColors.surfaceMuted,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: SelectableText(
+                                  const JsonEncoder.withIndent('  ')
+                                      .convert(record.report.rawData),
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontSize: 10,
+                                    height: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MonthlyPunchTable extends StatelessWidget {
+  const _MonthlyPunchTable({required this.records});
+
+  final List<CheckinRecord> records;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFFE6EAF0)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowColor: WidgetStateProperty.all(const Color(0xFF1F2937)),
+          headingTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+          dataTextStyle: const TextStyle(
+            color: Color(0xFF4B5563),
+            fontSize: 11,
+          ),
+          columns: const [
+            DataColumn(label: Text('日期')),
+            DataColumn(label: Text('时间')),
+            DataColumn(label: Text('打卡类型')),
+            DataColumn(label: Text('异常类型')),
+            DataColumn(label: Text('标准时间')),
+            DataColumn(label: Text('打卡地点')),
+            DataColumn(label: Text('WiFi / 设备')),
+            DataColumn(label: Text('备注')),
+          ],
+          rows: [
+            for (final record in records)
+              DataRow(
+                cells: [
+                  DataCell(
+                    Text(DateFormat('yyyy-MM-dd').format(record.checkinTime)),
+                  ),
+                  DataCell(
+                    Text(DateFormat('HH:mm:ss').format(record.checkinTime)),
+                  ),
+                  DataCell(
+                    Text(
+                      record.checkinType.isEmpty ? '--' : record.checkinType,
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      record.exceptionType.isEmpty
+                          ? '--'
+                          : record.exceptionType,
+                      style: TextStyle(
+                        color: record.exceptionType.isEmpty
+                            ? const Color(0xFF4B5563)
+                            : const Color(0xFFC2410C),
+                        fontWeight: record.exceptionType.isEmpty
+                            ? FontWeight.normal
+                            : FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      record.formattedScheduleTime.isEmpty
+                          ? '--'
+                          : record.formattedScheduleTime,
+                    ),
+                  ),
+                  DataCell(
+                    Text(
+                      record.locationTitle.isEmpty
+                          ? '--'
+                          : record.locationTitle,
+                    ),
+                  ),
+                  DataCell(
+                    Text(_joinedOrFallback([record.wifiName, record.deviceId])),
+                  ),
+                  DataCell(Text(record.notes.isEmpty ? '--' : record.notes)),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _joinedOrFallback(Iterable<String> values) {
+  final text = values
+      .map((value) => value.trim())
+      .where((value) {
+        return value.isNotEmpty;
+      })
+      .join(' / ');
+  return text.isEmpty ? '--' : text;
+}
+
 // Kept for compact single-member report rendering in custom integrations.
 // ignore: unused_element
 class _MonthlyReportCard extends StatelessWidget {
@@ -2817,29 +3201,53 @@ class _MonthlyReportCard extends StatelessWidget {
                 color: const Color(0xFFEFF8F6),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(
-                    Icons.more_time_rounded,
-                    size: 17,
-                    color: Color(0xFF087D61),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.more_time_rounded,
+                        size: 17,
+                        color: Color(0xFF087D61),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '加班合计 ${report.overwork!.totalText}',
+                        style: const TextStyle(
+                          color: Color(0xFF087D61),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '加班合计 ${report.overwork!.totalText}',
-                    style: const TextStyle(
-                      color: Color(0xFF087D61),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '工作日 ${formatWorkDuration(report.overwork!.workdaySeconds)}',
-                    style: const TextStyle(
-                      color: Color(0xFF5B756F),
-                      fontSize: 10,
-                    ),
+                  const SizedBox(height: 9),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 7,
+                    children: [
+                      _ReportDetailChip(
+                        text:
+                            '工作日 ${formatWorkDuration(report.overwork!.workdaySeconds)}',
+                      ),
+                      _ReportDetailChip(
+                        text:
+                            '休息日 ${formatWorkDuration(report.overwork!.restDaySeconds)}',
+                      ),
+                      _ReportDetailChip(
+                        text:
+                            '节假日 ${formatWorkDuration(report.overwork!.holidaySeconds)}',
+                      ),
+                      _ReportDetailChip(
+                        text:
+                            '计调休 ${formatWorkDuration(report.overwork!.workdayAsVacationSeconds + report.overwork!.restDayAsVacationSeconds + report.overwork!.holidayAsVacationSeconds)}',
+                      ),
+                      _ReportDetailChip(
+                        text:
+                            '计加班费 ${formatWorkDuration(report.overwork!.workdayAsMoneySeconds + report.overwork!.restDayAsMoneySeconds + report.overwork!.holidayAsMoneySeconds)}',
+                      ),
+                    ],
                   ),
                 ],
               ),

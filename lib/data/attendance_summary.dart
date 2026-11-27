@@ -208,6 +208,20 @@ List<AttendanceSyncWindow> buildAttendanceReportSyncWindows(
   return windows;
 }
 
+bool isCompleteMonthlyReportWindow(
+  DateTime periodStart,
+  DateTime periodEndExclusive,
+) {
+  return periodStart.day == 1 &&
+      periodStart.hour == 0 &&
+      periodStart.minute == 0 &&
+      periodStart.second == 0 &&
+      periodStart.millisecond == 0 &&
+      periodEndExclusive.isAtSameMomentAs(
+        DateTime(periodStart.year, periodStart.month + 1),
+      );
+}
+
 DateTime attendanceHalfMonthStart(DateTime value) {
   return DateTime(value.year, value.month, value.day >= 16 ? 16 : 1);
 }

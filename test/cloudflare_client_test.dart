@@ -293,6 +293,134 @@ void main() {
       ]);
     },
   );
+
+  test(
+    'only treats complete natural-month report snapshots as synced',
+    () async {
+      final database = CloudflareAttendanceDatabase(
+        config: const DatabaseConfig(
+          host: 'gateway.example.com',
+          port: 4000,
+          username: '',
+          password: '',
+          database: 'tospino_hr',
+          proxyEnabled: true,
+          remoteConfigured: true,
+        ),
+        httpClient: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['action'], 'load_report_snapshot_keys');
+          return _json([
+            '${DateTime(2026, 10).millisecondsSinceEpoch}|'
+                '${DateTime(2026, 10, 16).millisecondsSinceEpoch}|PM07',
+            '${DateTime(2026, 11).millisecondsSinceEpoch}|'
+                '${DateTime(2026, 12).millisecondsSinceEpoch}|PM07',
+          ]);
+        }),
+      );
+
+      final keys = await database.loadSyncedSnapshotKeys(
+        firstMonth: DateTime(2026, 10),
+        lastMonth: DateTime(2026, 11),
+        userIds: const {'PM07'},
+      );
+
+      expect(keys, {'${DateTime(2026, 11).millisecondsSinceEpoch}|PM07'});
+    },
+  );
+
+  test('loads complete monthly report detail through the proxy', () async {
+    final database = CloudflareAttendanceDatabase(
+      config: const DatabaseConfig(
+        host: 'gateway.example.com',
+        port: 4000,
+        username: '',
+        password: '',
+        database: 'tospino_hr',
+        proxyEnabled: true,
+        remoteConfigured: true,
+      ),
+      httpClient: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['action'], 'load_monthly_report');
+        return _json({
+          'report_json': jsonEncode({
+            ..._monthlyReport().toJson(),
+            'exception_infos': [
+              {'exception': 1, 'count': 2, 'duration': 120},
+            ],
+            'sp_items': [
+              {
+                'type': 1,
+                'name': '年假',
+                'count': 1,
+                'duration': 3600,
+                'time_type': 1,
+              },
+            ],
+            'overwork_info': {'workday_over_sec': 3600},
+          }),
+        });
+      }),
+    );
+
+    final report = await database.loadMonthlyReport(
+      userId: 'PM07',
+      month: DateTime(2026, 11),
+    );
+
+    expect(report?.summary.workDays, 20);
+    expect(report?.exceptions.single.label, '迟到');
+    expect(report?.specialItems.single.label, '年假');
+    expect(report?.overwork?.workdaySeconds, 3600);
+  });
+
+  test('loads only complete monthly reports for annual detail', () async {
+    final database = CloudflareAttendanceDatabase(
+      config: const DatabaseConfig(
+        host: 'gateway.example.com',
+        port: 4000,
+        username: '',
+        password: '',
+        database: 'tospino_hr',
+        proxyEnabled: true,
+        remoteConfigured: true,
+      ),
+      httpClient: MockClient((request) async {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['action'], 'load_monthly_report_snapshots');
+        return _json([
+          {
+            'user_id': 'PM07',
+            'year': 2026,
+            'period_start': DateTime(2026, 10).millisecondsSinceEpoch,
+            'period_end_exclusive': DateTime(
+              2026,
+              10,
+              16,
+            ).millisecondsSinceEpoch,
+            'report_json': jsonEncode(_monthlyReport().toJson()),
+          },
+          {
+            'user_id': 'PM07',
+            'year': 2026,
+            'period_start': DateTime(2026, 11).millisecondsSinceEpoch,
+            'period_end_exclusive': DateTime(2026, 12).millisecondsSinceEpoch,
+            'report_json': jsonEncode(_monthlyReport().toJson()),
+          },
+        ]);
+      }),
+    );
+
+    final reports = await database.loadMonthlyReports(
+      firstMonth: DateTime(2026, 10),
+      lastMonth: DateTime(2026, 11),
+      userIds: const {'PM07'},
+    );
+
+    expect(reports, hasLength(1));
+    expect(reports.single.periodStart, DateTime(2026, 11));
+  });
 }
 
 MonthlyReport _monthlyReport() {

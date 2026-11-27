@@ -202,7 +202,27 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
       ).millisecondsSinceEpoch,
       'user_ids': userIds.toList(growable: false),
     });
-    return data is List ? data.map((value) => '$value').toSet() : <String>{};
+    if (data is! List) {
+      return <String>{};
+    }
+    final keys = <String>{};
+    for (final value in data) {
+      final parts = '$value'.split('|');
+      if (parts.length != 3) {
+        continue;
+      }
+      final startMs = int.tryParse(parts[0]);
+      final endMs = int.tryParse(parts[1]);
+      if (startMs == null || endMs == null) {
+        continue;
+      }
+      final start = DateTime.fromMillisecondsSinceEpoch(startMs);
+      final end = DateTime.fromMillisecondsSinceEpoch(endMs);
+      if (isCompleteMonthlyReportWindow(start, end)) {
+        keys.add('$startMs|${parts[2]}');
+      }
+    }
+    return keys;
   }
 
   @override
@@ -396,6 +416,55 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
   }
 
   @override
+  Future<MonthlyReport?> loadMonthlyReport({
+    required String userId,
+    required DateTime month,
+  }) async {
+    final data = await _post('load_monthly_report', {
+      'user_id': userId,
+      'period_start_ms': DateTime(
+        month.year,
+        month.month,
+      ).millisecondsSinceEpoch,
+      'period_end_exclusive_ms': DateTime(
+        month.year,
+        month.month + 1,
+      ).millisecondsSinceEpoch,
+    });
+    final row = _map(data);
+    final rawReport = row['report_json'];
+    final decoded = rawReport is String ? jsonDecode(rawReport) : rawReport;
+    return decoded is Map
+        ? MonthlyReport.fromJson(Map<String, dynamic>.from(decoded))
+        : null;
+  }
+
+  @override
+  Future<List<MonthlyReportRecord>> loadMonthlyReports({
+    required DateTime firstMonth,
+    required DateTime lastMonth,
+    Set<String> userIds = const {},
+  }) async {
+    final snapshots = await _loadMonthlyReportSnapshots(
+      start: DateTime(firstMonth.year, firstMonth.month),
+      endExclusive: DateTime(lastMonth.year, lastMonth.month + 1),
+      userIds: userIds,
+    );
+    return [
+      for (final snapshot in snapshots)
+        if (isCompleteMonthlyReportWindow(
+          snapshot.periodStart,
+          snapshot.periodEndExclusive,
+        ))
+          MonthlyReportRecord(
+            periodStart: snapshot.periodStart,
+            periodEndExclusive: snapshot.periodEndExclusive,
+            report: snapshot.report,
+          ),
+    ];
+  }
+
+  @override
   Future<List<AttendanceSummaryRow>> loadAllTimeSummary({
     required DateTime firstMonth,
     required DateTime lastMonth,
@@ -472,11 +541,15 @@ class CloudflareAttendanceDatabase extends AttendanceDatabase {
       }
       final periodStartMs = _int(row['period_start']);
       final periodStart = DateTime.fromMillisecondsSinceEpoch(periodStartMs);
+      final periodEndExclusive = DateTime.fromMillisecondsSinceEpoch(
+        _int(row['period_end_exclusive']),
+      );
       final parsedYear = _int(row['year']);
       snapshots.add(
         _CloudMonthlyReportSnapshot(
           year: parsedYear > 0 ? parsedYear : periodStart.year,
           periodStart: periodStart,
+          periodEndExclusive: periodEndExclusive,
           report: MonthlyReport.fromJson(Map<String, dynamic>.from(decoded)),
         ),
       );
@@ -594,11 +667,13 @@ class _CloudMonthlyReportSnapshot {
   const _CloudMonthlyReportSnapshot({
     required this.year,
     required this.periodStart,
+    required this.periodEndExclusive,
     required this.report,
   });
 
   final int year;
   final DateTime periodStart;
+  final DateTime periodEndExclusive;
   final MonthlyReport report;
 }
 

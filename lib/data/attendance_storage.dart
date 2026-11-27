@@ -1,4 +1,5 @@
 import 'checkin_record.dart';
+import 'monthly_report.dart';
 
 enum AttendanceSyncMode { full, incremental }
 
@@ -35,6 +36,21 @@ class CheckinRecordPage {
   final int totalCount;
   final int totalUserCount;
   final int totalExceptionCount;
+}
+
+class MonthlyReportRecord {
+  const MonthlyReportRecord({
+    required this.periodStart,
+    required this.periodEndExclusive,
+    required this.report,
+  });
+
+  final DateTime periodStart;
+  final DateTime periodEndExclusive;
+  final MonthlyReport report;
+
+  String get periodLabel =>
+      '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}';
 }
 
 class AttendanceDatabaseStats {

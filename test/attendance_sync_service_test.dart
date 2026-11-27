@@ -200,12 +200,18 @@ class _MemoryAttendanceDatabase extends AttendanceDatabase {
     _reports.removeWhere(
       (_, stored) =>
           ids.contains(stored.userId) &&
-          stored.periodStart.isAtSameMomentAs(periodStart),
+          !stored.periodStart.isBefore(periodStart) &&
+          stored.periodStart.isBefore(periodEndExclusive),
     );
     var count = 0;
     for (final report in reports) {
       _reports['${periodStart.millisecondsSinceEpoch}|${report.userId}'] =
-          _StoredReport(year: year, periodStart: periodStart, report: report);
+          _StoredReport(
+            year: year,
+            periodStart: periodStart,
+            periodEndExclusive: periodEndExclusive,
+            report: report,
+          );
       count++;
     }
     return count;
@@ -228,7 +234,11 @@ class _MemoryAttendanceDatabase extends AttendanceDatabase {
   }) async {
     return _filterWindowKeys({
       for (final stored in _reports.values)
-        '${stored.periodStart.millisecondsSinceEpoch}|${stored.userId}',
+        if (isCompleteMonthlyReportWindow(
+          stored.periodStart,
+          stored.periodEndExclusive,
+        ))
+          '${stored.periodStart.millisecondsSinceEpoch}|${stored.userId}',
     }, userIds);
   }
 
@@ -361,11 +371,13 @@ class _StoredReport {
   const _StoredReport({
     required this.year,
     required this.periodStart,
+    required this.periodEndExclusive,
     required this.report,
   });
 
   final int year;
   final DateTime periodStart;
+  final DateTime periodEndExclusive;
   final MonthlyReport report;
 
   String get userId => report.userId;

@@ -117,6 +117,30 @@ void main() {
   });
 
   test(
+    'rejects half-month and otherwise incomplete monthly report snapshots',
+    () {
+      expect(
+        isCompleteMonthlyReportWindow(DateTime(2026, 10), DateTime(2026, 11)),
+        isTrue,
+      );
+      expect(
+        isCompleteMonthlyReportWindow(
+          DateTime(2026, 10),
+          DateTime(2026, 10, 16),
+        ),
+        isFalse,
+      );
+      expect(
+        isCompleteMonthlyReportWindow(
+          DateTime(2026, 10, 16),
+          DateTime(2026, 11),
+        ),
+        isFalse,
+      );
+    },
+  );
+
+  test(
     'incremental start uses the earlier latest check-in or report window',
     () {
       expect(
